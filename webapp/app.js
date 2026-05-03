@@ -12,8 +12,14 @@ const elements = {
   analyzeBtn: document.getElementById("analyze-btn"),
   clearChat: document.getElementById("clear-chat"),
   refreshStream: document.getElementById("refresh-stream"),
-  openaiStatus: document.getElementById("openai-status"),
-  openaiModel: document.getElementById("openai-model"),
+  providerStatus: document.getElementById("provider-status"),
+  providerModel: document.getElementById("provider-model"),
+  providerName: document.getElementById("provider-name"),
+  apiBaseUrl: document.getElementById("api-base-url"),
+  apiKey: document.getElementById("api-key"),
+  providerModelInput: document.getElementById("provider-model-input"),
+  saveProviderBtn: document.getElementById("save-provider-btn"),
+  providerSaveResult: document.getElementById("provider-save-result"),
 };
 
 const state = {
@@ -63,11 +69,14 @@ function resetChat() {
 async function loadConfig() {
   const response = await fetch("/api/config");
   const data = await response.json();
-  elements.openaiModel.textContent = data.model || "-";
-  elements.openaiStatus.textContent = data.openaiConfigured ? "已配置" : "未配置 OPENAI_API_KEY";
-  if (!data.openaiConfigured) {
-    elements.openaiStatus.classList.add("error");
-  }
+  elements.providerName.value = data.providerName || "";
+  elements.apiBaseUrl.value = data.apiBaseUrl || "";
+  elements.providerModelInput.value = data.model || "";
+  elements.providerModel.textContent = data.model || "-";
+  elements.providerStatus.textContent = data.apiConfigured
+    ? `${data.providerName || "Provider"} 已配置`
+    : `${data.providerName || "Provider"} 未配置 API Key`;
+  elements.providerStatus.classList.toggle("error", !data.apiConfigured);
 }
 
 async function probeDevice() {
@@ -130,16 +139,49 @@ async function analyzeCurrentFrame() {
   addMessage("assistant", data.answer);
 }
 
+async function saveProviderConfig() {
+  elements.saveProviderBtn.disabled = true;
+  elements.providerSaveResult.textContent = "保存中...";
+  elements.providerSaveResult.classList.remove("error");
+
+  const response = await fetch("/api/provider", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      providerName: elements.providerName.value.trim(),
+      apiBaseUrl: elements.apiBaseUrl.value.trim(),
+      apiKey: elements.apiKey.value.trim(),
+      model: elements.providerModelInput.value.trim(),
+    }),
+  });
+  const data = await response.json();
+  elements.saveProviderBtn.disabled = false;
+
+  if (!response.ok) {
+    elements.providerSaveResult.textContent = `保存失败：${data.error || "unknown error"}`;
+    elements.providerSaveResult.classList.add("error");
+    return;
+  }
+
+  elements.providerSaveResult.textContent = `${data.providerName} 设置已保存。`;
+  elements.providerModel.textContent = data.model || "-";
+  elements.providerStatus.textContent = data.apiConfigured
+    ? `${data.providerName || "Provider"} 已配置`
+    : `${data.providerName || "Provider"} 未配置 API Key`;
+  elements.providerStatus.classList.toggle("error", !data.apiConfigured);
+}
+
 elements.connectBtn.addEventListener("click", refreshCameraLinks);
 elements.refreshStream.addEventListener("click", refreshCameraLinks);
 elements.probeBtn.addEventListener("click", probeDevice);
 elements.analyzeBtn.addEventListener("click", analyzeCurrentFrame);
 elements.clearChat.addEventListener("click", resetChat);
 elements.deviceIp.addEventListener("change", refreshCameraLinks);
+elements.saveProviderBtn.addEventListener("click", saveProviderConfig);
 
 resetChat();
 refreshCameraLinks();
 loadConfig().catch((error) => {
-  elements.openaiStatus.textContent = `配置读取失败: ${error.message}`;
-  elements.openaiStatus.classList.add("error");
+  elements.providerStatus.textContent = `配置读取失败: ${error.message}`;
+  elements.providerStatus.classList.add("error");
 });

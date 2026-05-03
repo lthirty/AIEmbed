@@ -354,21 +354,10 @@ Failed to connect to ESP32: No serial data received
 
 - 输入设备 IP
 - 中间区域直接显示实时视频画面
+- 在页面里配置 AI 厂家的接口信息
 - 右侧输入问题，请 AI 根据当前抓拍画面做分析
 
 ### 11.1 启动方式
-
-先设置 OpenAI API Key：
-
-```powershell
-$env:OPENAI_API_KEY="你的OpenAIKey"
-```
-
-可选设置模型：
-
-```powershell
-$env:OPENAI_MODEL="gpt-5.4-mini"
-```
 
 启动本地服务：
 
@@ -385,17 +374,21 @@ http://127.0.0.1:8000/
 ### 11.2 使用方式
 
 1. 输入设备 IP，例如 `192.168.2.116`
-2. 点击“连接设备”
-3. 中间区域显示实时视频流
-4. 右侧输入问题
-5. 点击“分析当前画面”
-6. 系统会抓取当前视频帧并发送给 AI 分析
+2. 在页面上填写 AI 提供方名称、`API Base URL`、`API Key`、`Model`
+3. 点击“保存 AI 设置”
+4. 点击“连接设备”
+5. 中间区域显示实时视频流
+6. 右侧输入问题
+7. 点击“分析当前画面”
+8. 系统会抓取当前视频帧并发送给 AI 分析
 
 ### 11.3 设计限制
 
 - 当前 AI 分析基于“当前抓拍的一帧”，不是整段视频时序理解
 - 如果设备视频流正常，但抓拍接口异常，AI 分析会失败
-- OpenAI API 调用通过本地 Python 代理完成，需要本机能联网并已配置 API Key
+- 当前默认按 `OpenAI-compatible` 接口协议调用，需要厂商兼容 `/v1/responses` 风格接口
+- AI 配置保存在本地 `ai_provider_config.json`
+- 可直接双击 `start_ai_viewer.bat` 启动本地页面和代理服务
 
 ## 12. 本次实际调试记录
 

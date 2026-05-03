@@ -12,9 +12,32 @@ from pathlib import Path
 HOST = "127.0.0.1"
 PORT = 8000
 STATIC_DIR = Path(__file__).parent / "webapp"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip() or "gpt-5.4-mini"
-OPENAI_API_URL = "https://api.openai.com/v1/responses"
+CONFIG_PATH = Path(__file__).parent / "ai_provider_config.json"
+DEFAULT_PROVIDER_CONFIG = {
+    "providerName": os.getenv("AI_PROVIDER_NAME", "OpenAI-compatible").strip() or "OpenAI-compatible",
+    "apiBaseUrl": os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/responses").strip() or "https://api.openai.com/v1/responses",
+    "apiKey": os.getenv("OPENAI_API_KEY", "").strip(),
+    "model": os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip() or "gpt-5.4-mini",
+}
+
+
+def load_provider_config() -> dict:
+    config = dict(DEFAULT_PROVIDER_CONFIG)
+    if CONFIG_PATH.exists():
+        try:
+            file_config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            if isinstance(file_config, dict):
+                config.update({k: str(v) for k, v in file_config.items() if k in config})
+        except Exception:
+            pass
+    return config
+
+
+def save_provider_config(config: dict) -> None:
+    CONFIG_PATH.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def fetch_camera_snapshot(device_ip: str) -> bytes:
@@ -27,7 +50,7 @@ def fetch_camera_snapshot(device_ip: str) -> bytes:
         return response.read()
 
 
-def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]]) -> dict:
+def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]], model: str) -> dict:
     image_data_url = "data:image/jpeg;base64," + base64.b64encode(image_bytes).decode("ascii")
     system_text = (
         "You are analyzing the latest frame from an ESP32-CAM video feed. "
@@ -65,7 +88,7 @@ def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dic
     )
 
     return {
-        "model": OPENAI_MODEL,
+        "model": model,
         "input": items,
     }
 
@@ -83,16 +106,24 @@ def parse_response_text(payload: dict) -> str:
     return "\n".join(chunks).strip()
 
 
-def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]]) -> str:
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY is not set in the local environment.")
+def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]], provider_config: dict) -> str:
+    api_key = provider_config.get("apiKey", "").strip()
+    api_base_url = provider_config.get("apiBaseUrl", "").strip()
+    model = provider_config.get("model", "").strip()
 
-    payload = build_openai_payload(prompt, image_bytes, chat_history)
+    if not api_key:
+        raise RuntimeError("API Key is not configured.")
+    if not api_base_url:
+        raise RuntimeError("API Base URL is not configured.")
+    if not model:
+        raise RuntimeError("Model is not configured.")
+
+    payload = build_openai_payload(prompt, image_bytes, chat_history, model)
     request = urllib.request.Request(
-        OPENAI_API_URL,
+        api_base_url,
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
         method="POST",
@@ -103,11 +134,11 @@ def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, st
             response_payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenAI API error {exc.code}: {error_body}") from exc
+        raise RuntimeError(f"Provider API error {exc.code}: {error_body}") from exc
 
     answer = parse_response_text(response_payload)
     if not answer:
-        raise RuntimeError("OpenAI API returned no text output.")
+        raise RuntimeError("Provider API returned no text output.")
     return answer
 
 
@@ -126,11 +157,14 @@ class ViewerHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/config":
+            provider_config = load_provider_config()
             self.send_json(
                 200,
                 {
-                    "model": OPENAI_MODEL,
-                    "openaiConfigured": bool(OPENAI_API_KEY),
+                    "providerName": provider_config.get("providerName", ""),
+                    "apiBaseUrl": provider_config.get("apiBaseUrl", ""),
+                    "model": provider_config.get("model", ""),
+                    "apiConfigured": bool(provider_config.get("apiKey", "").strip()),
                 },
             )
             return
@@ -154,6 +188,42 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:
+        if self.path == "/api/provider":
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(content_length)
+                payload = json.loads(raw_body.decode("utf-8"))
+            except Exception:
+                self.send_json(400, {"error": "Invalid JSON body"})
+                return
+
+            provider_config = {
+                "providerName": str(payload.get("providerName", "")).strip() or "OpenAI-compatible",
+                "apiBaseUrl": str(payload.get("apiBaseUrl", "")).strip(),
+                "apiKey": str(payload.get("apiKey", "")).strip(),
+                "model": str(payload.get("model", "")).strip(),
+            }
+
+            if not provider_config["apiBaseUrl"]:
+                self.send_json(400, {"error": "apiBaseUrl is required"})
+                return
+            if not provider_config["model"]:
+                self.send_json(400, {"error": "model is required"})
+                return
+
+            save_provider_config(provider_config)
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "providerName": provider_config["providerName"],
+                    "apiBaseUrl": provider_config["apiBaseUrl"],
+                    "model": provider_config["model"],
+                    "apiConfigured": bool(provider_config["apiKey"]),
+                },
+            )
+            return
+
         if self.path != "/api/analyze":
             self.send_json(404, {"error": "Not found"})
             return
@@ -178,8 +248,9 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             return
 
         try:
+            provider_config = load_provider_config()
             image_bytes = fetch_camera_snapshot(device_ip)
-            answer = call_openai(prompt, image_bytes, chat_history)
+            answer = call_openai(prompt, image_bytes, chat_history, provider_config)
         except Exception as exc:
             self.send_json(500, {"error": str(exc)})
             return
@@ -193,9 +264,11 @@ def main() -> int:
         return 1
 
     server = ThreadingHTTPServer((HOST, PORT), ViewerHandler)
+    provider_config = load_provider_config()
     print(f"Local AI viewer: http://{HOST}:{PORT}/")
-    print(f"OpenAI model: {OPENAI_MODEL}")
-    print(f"OPENAI_API_KEY configured: {'yes' if OPENAI_API_KEY else 'no'}")
+    print(f"Provider: {provider_config.get('providerName', 'OpenAI-compatible')}")
+    print(f"Model: {provider_config.get('model', '-')}")
+    print(f"API configured: {'yes' if provider_config.get('apiKey', '').strip() else 'no'}")
     server.serve_forever()
     return 0
 

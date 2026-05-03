@@ -8,6 +8,7 @@ All notable changes to this project should be recorded in this file.
 - Added serial `ip` / `info` commands to reprint the current LAN address.
 - Added periodic serial IP banner output for easier customer setup.
 - Added a local web viewer and AI analysis workflow design.
+- Added web-based configuration for any OpenAI-compatible AI provider, not only OpenAI.
 
 ## v0.3.0 - 2026-05-03
 
