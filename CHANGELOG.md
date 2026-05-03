@@ -2,6 +2,14 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.5.0 - 2026-05-03
+
+- Replaced the blocking Arduino `WebServer` camera service with `esp_http_server`.
+- Fixed the architecture issue where `/stream` could monopolize the server and block `/` and `/capture`.
+- Improved the device-side HTTP service for concurrent live view and snapshot access.
+- Updated the local AI viewer to prefer the currently displayed browser frame instead of always calling `/capture`.
+- Changed the default AI provider to MiniMax Token Plan and added Anthropic-compatible request support.
+
 ## v0.4.0 - 2026-05-03
 
 - Improved serial IP reporting for the ESP32-CAM firmware.
@@ -10,6 +18,8 @@ All notable changes to this project should be recorded in this file.
 - Added a local web viewer and AI analysis workflow design.
 - Added web-based configuration for any OpenAI-compatible AI provider, not only OpenAI.
 - Set the default provider to DeepSeek using its official `chat/completions` endpoint.
+- Changed the AI panel to keep the current question at the top and prepend the newest result above older results.
+- Added a dedicated log page and detailed backend stage logs for snapshot, provider request, and response parsing failures.
 
 ## v0.3.0 - 2026-05-03
 

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI Viewer Logs</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Diagnostics</p>
+        <h1>请求日志</h1>
+        <p class="subtext">这里会显示抓拍、AI 请求、错误详情。最新日志在最上面。</p>
+      </div>
+      <div class="hero-card">
+        <div class="status-row">
+          <span>刷新</span>
+          <button id="refresh-logs" type="button">刷新日志</button>
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <div id="logs-container" class="messages"></div>
+    </section>
+  </main>
+  <script>
+    async function loadLogs() {
+      const res = await fetch('/api/logs');
+      const data = await res.json();
+      const root = document.getElementById('logs-container');
+      root.innerHTML = '';
+      for (const entry of data.logs || []) {
+        const article = document.createElement('article');
+        article.className = 'message system';
+        const role = document.createElement('span');
+        role.className = 'role';
+        role.textContent = `${entry.ts} · ${entry.level.toUpperCase()} · ${entry.stage} · ${entry.requestId || '-'}`;
+        const body = document.createElement('pre');
+        body.className = 'log-pre';
+        body.textContent = `${entry.message}\n${JSON.stringify(entry.details || {}, null, 2)}`;
+        article.append(role, body);
+        root.appendChild(article);
+      }
+    }
+    document.getElementById('refresh-logs').addEventListener('click', loadLogs);
+    loadLogs();
+  </script>
+</body>
+</html>

@@ -233,6 +233,72 @@ button:hover,
   color: var(--muted);
 }
 
+.current-question-box {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(63, 137, 255, 0.08);
+}
+
+.steps-box {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(93, 212, 177, 0.08);
+}
+
+.workflow-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.workflow-step {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.workflow-step .step-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.workflow-step .step-name {
+  font-weight: 600;
+}
+
+.workflow-step .step-state {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workflow-step.success .step-state {
+  color: var(--accent);
+}
+
+.workflow-step.error .step-state {
+  color: var(--danger);
+}
+
+.workflow-step.running .step-state {
+  color: #ffd166;
+}
+
+.workflow-step .step-detail {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.current-question {
+  font-size: 18px;
+  font-weight: 600;
+}
+
 .chat-actions {
   display: flex;
   justify-content: flex-end;
@@ -240,6 +306,13 @@ button:hover,
 
 .error {
   color: var(--danger);
+}
+
+.log-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 13px/1.45 Consolas, "Courier New", monospace;
 }
 
 @media (max-width: 1100px) {

@@ -4,6 +4,7 @@
 .history/
 __pycache__/
 ai_provider_config.json
+image/
 src/image/
 src/deep-research-report.md
 .vscode/.browse.c_cpp.db*

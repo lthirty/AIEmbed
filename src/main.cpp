@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WebServer.h>
 #include <WiFiManager.h>
+#include <esp_http_server.h>
 #include "esp_camera.h"
 
 namespace {
@@ -11,16 +11,21 @@ namespace {
 // v0.2.0 - ESP32-CAM SoftAP web viewer with /stream and /capture
 // v0.3.0 - WiFiManager provisioning portal, router LAN access, WiFi reset endpoint
 // v0.4.0 - Serial IP reporting improvements for customer setup and local AI viewer support
-constexpr char kFirmwareVersion[] = "v0.4.0";
+// v0.5.0 - Replace blocking WebServer with esp_http_server for stable stream and capture concurrency
+constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";
 constexpr char kConfigApPassword[] = "12345678";
 constexpr uint32_t kConfigPortalTimeoutSeconds = 300;
 constexpr uint32_t kSerialIpReportIntervalMs = 30000;
 
-WebServer server(80);
 WiFiManager wifiManager;
 uint32_t lastSerialIpReportMs = 0;
+httpd_handle_t httpServer = nullptr;
+
+constexpr char kStreamContentType[] = "multipart/x-mixed-replace;boundary=frame";
+constexpr char kStreamBoundary[] = "\r\n--frame\r\n";
+constexpr char kStreamPart[] = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
 
 static const char kIndexHtml[] PROGMEM = R"rawliteral(
 <!doctype html>
@@ -189,65 +194,70 @@ void configureCamera() {
   sensor->set_saturation(sensor, -1);
 }
 
-void handleRoot() {
-  server.send(200, "text/html; charset=utf-8", buildIndexHtml());
-}
-
-void handleCapture() {
+esp_err_t handleCapture(httpd_req_t *req) {
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    server.send(500, "text/plain", "Camera capture failed");
-    return;
+    httpd_resp_set_status(req, "500 Internal Server Error");
+    httpd_resp_set_type(req, "text/plain");
+    return httpd_resp_send(req, "Camera capture failed", HTTPD_RESP_USE_STRLEN);
   }
 
-  server.sendHeader("Content-Type", "image/jpeg");
-  server.sendHeader("Content-Length", String(fb->len));
-  server.send(200);
-  WiFiClient client = server.client();
-  client.write(fb->buf, fb->len);
+  httpd_resp_set_type(req, "image/jpeg");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  esp_err_t result = httpd_resp_send(req, reinterpret_cast<const char *>(fb->buf), fb->len);
   esp_camera_fb_return(fb);
+  return result;
 }
 
-void handleStream() {
-  WiFiClient client = server.client();
+esp_err_t handleStream(httpd_req_t *req) {
+  httpd_resp_set_type(req, kStreamContentType);
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
 
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
-  client.println("Cache-Control: no-cache");
-  client.println("Connection: close");
-  client.println("Access-Control-Allow-Origin: *");
-  client.println();
-
-  while (client.connected()) {
+  char partHeader[64];
+  while (true) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
       Serial.println("Camera capture failed during stream");
-      break;
+      return ESP_FAIL;
     }
 
-    client.printf("--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", fb->len);
-    client.write(fb->buf, fb->len);
-    client.print("\r\n");
+    const size_t headerLength = snprintf(partHeader, sizeof(partHeader), kStreamPart, fb->len);
+    esp_err_t result = httpd_resp_send_chunk(req, kStreamBoundary, strlen(kStreamBoundary));
+    if (result == ESP_OK) {
+      result = httpd_resp_send_chunk(req, partHeader, headerLength);
+    }
+    if (result == ESP_OK) {
+      result = httpd_resp_send_chunk(req, reinterpret_cast<const char *>(fb->buf), fb->len);
+    }
     esp_camera_fb_return(fb);
 
-    if (!client.connected()) {
-      break;
+    if (result != ESP_OK) {
+      return result;
     }
-
-    delay(30);
   }
 }
 
-void handleNotFound() {
-  server.send(404, "text/plain", "Not found");
+esp_err_t handleRoot(httpd_req_t *req) {
+  const String html = buildIndexHtml();
+  httpd_resp_set_type(req, "text/html; charset=utf-8");
+  return httpd_resp_send(req, html.c_str(), html.length());
 }
 
-void handleResetWifi() {
-  server.send(200, "text/plain", "Wi-Fi credentials cleared. Rebooting into config mode...");
+esp_err_t handleResetWifi(httpd_req_t *req) {
+  httpd_resp_set_type(req, "text/plain");
+  httpd_resp_send(req, "Wi-Fi credentials cleared. Rebooting into config mode...", HTTPD_RESP_USE_STRLEN);
   delay(300);
   wifiManager.resetSettings();
   delay(300);
   ESP.restart();
+  return ESP_OK;
+}
+
+esp_err_t handleNotFound(httpd_req_t *req, httpd_err_code_t) {
+  httpd_resp_set_status(req, "404 Not Found");
+  httpd_resp_set_type(req, "text/plain");
+  return httpd_resp_send(req, "Not found", HTTPD_RESP_USE_STRLEN);
 }
 
 void connectToRouter() {
@@ -277,12 +287,29 @@ void connectToRouter() {
 }
 
 void startWebServer() {
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/capture", HTTP_GET, handleCapture);
-  server.on("/stream", HTTP_GET, handleStream);
-  server.on("/resetwifi", HTTP_GET, handleResetWifi);
-  server.onNotFound(handleNotFound);
-  server.begin();
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 80;
+  config.max_uri_handlers = 8;
+  config.max_open_sockets = 8;
+  config.lru_purge_enable = true;
+  config.recv_wait_timeout = 15;
+  config.send_wait_timeout = 15;
+
+  if (httpd_start(&httpServer, &config) != ESP_OK) {
+    Serial.println("Failed to start HTTP server");
+    return;
+  }
+
+  httpd_uri_t rootUri = {.uri = "/", .method = HTTP_GET, .handler = handleRoot, .user_ctx = nullptr};
+  httpd_uri_t captureUri = {.uri = "/capture", .method = HTTP_GET, .handler = handleCapture, .user_ctx = nullptr};
+  httpd_uri_t streamUri = {.uri = "/stream", .method = HTTP_GET, .handler = handleStream, .user_ctx = nullptr};
+  httpd_uri_t resetUri = {.uri = "/resetwifi", .method = HTTP_GET, .handler = handleResetWifi, .user_ctx = nullptr};
+
+  httpd_register_uri_handler(httpServer, &rootUri);
+  httpd_register_uri_handler(httpServer, &captureUri);
+  httpd_register_uri_handler(httpServer, &streamUri);
+  httpd_register_uri_handler(httpServer, &resetUri);
+  httpd_register_err_handler(httpServer, HTTPD_404_NOT_FOUND, handleNotFound);
   Serial.println("HTTP server started");
 }
 
@@ -302,8 +329,6 @@ void setup() {
 }
 
 void loop() {
-  server.handleClient();
-
   while (Serial.available() > 0) {
     const String command = Serial.readStringUntil('\n');
     if (command.equalsIgnoreCase("ip") || command.equalsIgnoreCase("info")) {

@@ -24,8 +24,10 @@
 |- CHANGELOG.md
 |- platformio.ini
 |- PROJECT_ONBOARDING.md
+|- start_ai_viewer.bat
 |- viewer_server.py
 `- webapp/
+   |- logs.html
    |- index.html
    |- app.js
    `- styles.css
@@ -45,6 +47,8 @@
   本地 Web 控制台服务，负责页面托管、抓拍代理和 OpenAI API 调用
 - `webapp/*`
   本地浏览器页面，输入设备 IP 后显示实时视频并支持 AI 对话分析
+- `start_ai_viewer.bat`
+  双击快速启动本地页面和代理服务
 - `PROJECT_ONBOARDING.md`
   本交接文档
 
@@ -140,14 +144,14 @@ C:\Users\lthir\.platformio\penv\Scripts\platformio.exe
 
 ```text
 Booting ESP32-CAM web viewer...
-Firmware version: v0.4.0
+Firmware version: v0.5.0
 Starting Wi-Fi provisioning flow...
 If needed, connect to setup AP: ESP32-CAM-Setup
 Setup password: 12345678
 Open setup page: http://192.168.4.1/
 Wi-Fi connected
 ========== DEVICE NETWORK INFO ==========
-Firmware: v0.4.0
+Firmware: v0.5.0
 SSID: YourRouterWiFi
 IP: 192.168.1.123
 Viewer: http://192.168.1.123/
@@ -356,6 +360,8 @@ Failed to connect to ESP32: No serial data received
 - 中间区域直接显示实时视频画面
 - 在页面里配置 AI 厂家的接口信息
 - 右侧输入问题，请 AI 根据当前抓拍画面做分析
+- 页面内直接显示 AI 分析关键步骤和当前卡点
+- 可打开独立日志页查看抓拍、AI 请求和错误细节
 
 ### 11.1 启动方式
 
@@ -376,30 +382,35 @@ http://127.0.0.1:8000/
 1. 输入设备 IP，例如 `192.168.2.116`
 2. 在页面上填写 AI 提供方名称、`API Base URL`、`API Key`、`Model`
 3. 点击“保存 AI 设置”
-4. 点击“连接设备”
-5. 中间区域显示实时视频流
-6. 右侧输入问题
-7. 点击“分析当前画面”
-8. 系统会抓取当前视频帧并发送给 AI 分析
+4. 系统会自动验证 AI 文本接口是否正常
+5. 点击“连接设备”
+6. 中间区域显示实时视频流
+7. 右侧输入问题
+8. 点击“分析当前画面”
+9. 页面会显示 AI 分析关键步骤和当前状态
+10. 如失败，打开日志页查看详细阶段日志
 
 ### 11.3 设计限制
 
 - 当前 AI 分析基于“当前抓拍的一帧”，不是整段视频时序理解
 - 如果设备视频流正常，但抓拍接口异常，AI 分析会失败
-- 当前默认按 `OpenAI-compatible` 接口协议调用，需要厂商兼容 `/v1/responses` 风格接口
 - AI 配置保存在本地 `ai_provider_config.json`
 - 可直接双击 `start_ai_viewer.bat` 启动本地页面和代理服务
+- 日志页地址：`http://127.0.0.1:8000/logs.html`
 
 当前默认预设：
 
-- 提供方：`DeepSeek`
-- API Base URL：`https://api.deepseek.com/chat/completions`
-- Model：`deepseek-v4-flash`
+- 提供方：`MiniMax Token Plan`
+- API Base URL：`https://api.minimaxi.com/anthropic/v1/messages`
+- Model：`MiniMax-M2.7`
 
 说明：
 
-- DeepSeek 官方文档当前主示例是 `chat/completions` 风格接口
-- 本地代理现在同时兼容 `responses` 和 `chat/completions` 两种接口模式
+- MiniMax 官方 Quickstart 对 Token Plan 推荐使用 `Anthropic-compatible` 接口
+- 本地代理现在同时兼容 `responses`、`chat/completions` 和 `anthropic/v1/messages`
+- 页面保存 AI 设置后会自动做一次文本接口连通性验证
+- 如果未保存 API Key，页面会弹窗提醒
+- 当前问题固定在上方，最新结果插在最上方，旧结果顺序下沉
 
 ## 12. 本次实际调试记录
 
