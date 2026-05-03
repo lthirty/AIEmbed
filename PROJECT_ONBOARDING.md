@@ -10,6 +10,7 @@
 - 成功识别串口设备
 - 成功编译并烧录测试固件
 - 通过串口日志确认固件已经在目标板运行
+- 已实现 Wi-Fi 配网热点和路由器局域网访问
 
 本文件用于后续人员快速接手项目，避免重复踩坑。
 
@@ -110,15 +111,17 @@ C:\Users\lthir\.platformio\penv\Scripts\platformio.exe
 当前 `src/main.cpp` 是 `ESP32-CAM` 网页视频查看固件，作用是：
 
 - 初始化 `AI Thinker ESP32-CAM` 摄像头
-- 启动 `SoftAP`
-- 提供浏览器可访问的视频查看页面
+- 启动 `WiFiManager` 配网热点和配置页面
+- 自动连接用户配置的路由器 Wi-Fi
+- 在路由器局域网内提供浏览器可访问的视频查看页面
 - 提供视频流和抓拍接口
 
 程序输出内容包括：
 
 - 固件启动标识
 - 固件版本号
-- 热点信息
+- 配网热点信息
+- 路由器连接结果
 - Web 访问地址
 - 摄像头初始化失败信息
 
@@ -126,21 +129,26 @@ C:\Users\lthir\.platformio\penv\Scripts\platformio.exe
 
 ```text
 Booting ESP32-CAM web viewer...
-Firmware version: v0.2.0
-Wi-Fi AP started
-Firmware: v0.2.0
-SSID: ESP32-CAM-Viewer
-Password: 12345678
-Open: http://192.168.4.1/
-Stream: http://192.168.4.1/stream
-Capture: http://192.168.4.1/capture
+Firmware version: v0.3.0
+Starting Wi-Fi provisioning flow...
+If needed, connect to setup AP: ESP32-CAM-Setup
+Setup password: 12345678
+Open setup page: http://192.168.4.1/
+Wi-Fi connected
+Firmware: v0.3.0
+SSID: YourRouterWiFi
+IP: http://192.168.1.123/
+Stream: http://192.168.1.123/stream
+Capture: http://192.168.1.123/capture
 ```
 
 浏览器访问方式：
 
-- 连接热点 `ESP32-CAM-Viewer`
+- 首次使用时，连接热点 `ESP32-CAM-Setup`
 - 密码：`12345678`
 - 打开 `http://192.168.4.1/`
+- 在配网页面中选择并填写路由器 Wi-Fi
+- 设备连上路由器后，改用串口打印出的局域网 IP 访问
 
 ## 7. 日常使用流程
 
@@ -196,7 +204,32 @@ Capture: http://192.168.4.1/capture
 
 如果不把 `GPIO0` 松开，板子可能会一直留在 bootloader/download 模式，导致程序虽然已经烧录成功，但不会进入用户固件正常运行流程。
 
-## 9. 常见问题与处理方法
+## 9. Wi-Fi 配网与访问流程
+
+推荐使用流程：
+
+1. 烧录固件
+2. 断开 `GPIO0-GND` 并复位
+3. 手机或电脑连接热点 `ESP32-CAM-Setup`
+4. 密码输入 `12345678`
+5. 打开 `http://192.168.4.1/`
+6. 在配网页面中选择目标路由器并输入密码
+7. 等待设备自动切换到 `STA` 模式连接路由器
+8. 查看串口日志中的设备局域网 IP
+9. 在同一路由器网络下浏览器访问该 IP
+
+说明：
+
+- 首次配网成功后，Wi-Fi 信息会由 `WiFiManager` 保存
+- 以后重启时，设备会优先自动连接已保存的 Wi-Fi
+- 只有在连接失败或未保存 Wi-Fi 时，才会再次打开配网热点
+
+如果需要重新配网：
+
+- 访问 `http://设备IP/resetwifi`
+- 设备会清空保存的 Wi-Fi 并重启进入配网模式
+
+## 10. 常见问题与处理方法
 
 ### 9.1 `pio` 或 `platformio` 命令找不到
 
@@ -275,11 +308,25 @@ Failed to connect to ESP32: No serial data received
 2. 按 `RST`
 3. 用 `115200` 重新打开 `COM3`
 
-### 9.5 启动时前面有乱码
+### 9.5 手机连接热点后没有自动弹出配网页面
+
+处理：
+
+- 手动打开 `http://192.168.4.1/`
+- 某些手机内嵌浏览器不会稳定处理 Captive Portal 跳转
+
+### 9.6 忘记原来的路由器配置，想重新配网
+
+处理：
+
+- 访问 `http://设备IP/resetwifi`
+- 或在代码里后续增加物理按键清网逻辑
+
+### 9.7 启动时前面有乱码
 
 这是正常现象之一。ESP32 上电启动 ROM 日志和用户程序串口初始化之间可能出现短暂乱码。只要后续用户日志正常，比如 `alive: ...`，就说明程序已正常运行。
 
-## 10. 本次实际调试记录
+## 11. 本次实际调试记录
 
 以下记录对应本次接手调试过程，便于后续排查历史问题。
 
@@ -385,7 +432,23 @@ alive: 23997 ms, loop=22
 - 当前测试固件已经在设备上正常运行
 - 当前开发链路 `编译 -> 烧录 -> 串口验证` 已打通
 
-## 11. 接手人员建议工作顺序
+### 10.8 Wi-Fi 配网与局域网访问改造
+
+本次改造目标：
+
+- 不再要求电脑长期连接设备热点
+- 改为首次通过热点配网
+- 后续通过同一路由器下的局域网 IP 访问视频页面
+
+实现方案：
+
+- 参考 `MCSmallDesktopDisplay` 项目，引入 `WiFiManager`
+- 开机执行 `autoConnect()`
+- 未配置或连接失败时启动热点 `ESP32-CAM-Setup`
+- 配网成功后自动切到路由器网络
+- 增加 `/resetwifi` 以便重新配网
+
+## 12. 接手人员建议工作顺序
 
 建议不要一上来就接入复杂业务代码，按下面顺序推进：
 
@@ -400,7 +463,7 @@ alive: 23997 ms, loop=22
 - 能快速区分“硬件链路问题”和“业务代码问题”
 - 降低多人接手时的排查成本
 
-## 12. 后续建议
+## 13. 后续建议
 
 后续建议按优先级推进：
 
@@ -422,7 +485,7 @@ alive: 23997 ms, loop=22
 - 引入版本管理规范
 - 将烧录命令、接线、日志判定标准流程化
 
-## 13. 版本与 GitHub 同步规范
+## 14. 版本与 GitHub 同步规范
 
 后续每次修改都执行以下约定：
 
@@ -441,7 +504,7 @@ fix: resolve xxx
 docs: update onboarding and changelog
 ```
 
-## 14. 快速检查清单
+## 15. 快速检查清单
 
 新成员接手时，可按以下顺序快速自检：
 

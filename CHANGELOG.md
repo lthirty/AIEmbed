@@ -2,6 +2,15 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.3.0 - 2026-05-03
+
+- Replaced the fixed camera hotspot workflow with `WiFiManager` provisioning.
+- Added setup hotspot `ESP32-CAM-Setup` with password `12345678`.
+- Added captive portal based Wi-Fi configuration at `http://192.168.4.1/`.
+- After Wi-Fi setup, the device switches to router LAN access and serves the viewer on its STA IP.
+- Added `/resetwifi` endpoint to clear saved Wi-Fi credentials and reboot into setup mode.
+- Updated the viewer page to display firmware version and current LAN IP.
+
 ## v0.2.0 - 2026-05-03
 
 - Replaced the serial heartbeat test with an `ESP32-CAM` web viewer.

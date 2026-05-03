@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <WiFiManager.h>
 #include "esp_camera.h"
 
 namespace {
@@ -8,12 +9,15 @@ namespace {
 // Firmware version history
 // v0.1.0 - PlatformIO minimal serial heartbeat test
 // v0.2.0 - ESP32-CAM SoftAP web viewer with /stream and /capture
-constexpr char kFirmwareVersion[] = "v0.2.0";
+// v0.3.0 - WiFiManager provisioning portal, router LAN access, WiFi reset endpoint
+constexpr char kFirmwareVersion[] = "v0.3.0";
 
-constexpr char kApSsid[] = "ESP32-CAM-Viewer";
-constexpr char kApPassword[] = "12345678";
+constexpr char kConfigApName[] = "ESP32-CAM-Setup";
+constexpr char kConfigApPassword[] = "12345678";
+constexpr uint32_t kConfigPortalTimeoutSeconds = 300;
 
 WebServer server(80);
+WiFiManager wifiManager;
 
 static const char kIndexHtml[] PROGMEM = R"rawliteral(
 <!doctype html>
@@ -94,10 +98,12 @@ static const char kIndexHtml[] PROGMEM = R"rawliteral(
 <body>
   <section class="panel">
     <h1>ESP32-CAM Live Viewer</h1>
-    <p>Open this page after connecting to the ESP32 hotspot. The live stream is embedded below.</p>
+    <p>Device connected through your router. The live stream is embedded below.</p>
     <div class="meta">
-      <span class="badge">Firmware v0.2.0</span>
+      <span class="badge">Firmware %VERSION%</span>
       <span class="badge">MJPEG stream</span>
+      <span>Mode: <code>Wi-Fi STA</code></span>
+      <span>IP: <code>%IP%</code></span>
       <span>Endpoint: <code>/stream</code></span>
       <span>Snapshot: <code>/capture</code></span>
     </div>
@@ -105,11 +111,19 @@ static const char kIndexHtml[] PROGMEM = R"rawliteral(
     <div class="actions">
       <a href="/capture" target="_blank" rel="noopener">Open Snapshot</a>
       <a href="/stream" target="_blank" rel="noopener">Open Stream URL</a>
+      <a href="/resetwifi" onclick="return confirm('Clear saved Wi-Fi and reboot into config mode?');">Reset Wi-Fi</a>
     </div>
   </section>
 </body>
 </html>
 )rawliteral";
+
+String buildIndexHtml() {
+  String html(kIndexHtml);
+  html.replace("%VERSION%", kFirmwareVersion);
+  html.replace("%IP%", WiFi.localIP().toString());
+  return html;
+}
 
 void configureCamera() {
   camera_config_t config{};
@@ -159,7 +173,7 @@ void configureCamera() {
 }
 
 void handleRoot() {
-  server.send_P(200, "text/html; charset=utf-8", kIndexHtml);
+  server.send(200, "text/html; charset=utf-8", buildIndexHtml());
 }
 
 void handleCapture() {
@@ -211,25 +225,49 @@ void handleNotFound() {
   server.send(404, "text/plain", "Not found");
 }
 
-void startAccessPoint() {
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(kApSsid, kApPassword);
+void handleResetWifi() {
+  server.send(200, "text/plain", "Wi-Fi credentials cleared. Rebooting into config mode...");
+  delay(300);
+  wifiManager.resetSettings();
+  delay(300);
+  ESP.restart();
+}
 
-  const IPAddress ip = WiFi.softAPIP();
+void connectToRouter() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  wifiManager.setClass("invert");
+  wifiManager.setAPClientCheck(true);
+  wifiManager.setMinimumSignalQuality(20);
+  wifiManager.setConfigPortalTimeout(kConfigPortalTimeoutSeconds);
+
   Serial.println();
-  Serial.println("Wi-Fi AP started");
+  Serial.println("Starting Wi-Fi provisioning flow...");
+  Serial.printf("If needed, connect to setup AP: %s\n", kConfigApName);
+  Serial.printf("Setup password: %s\n", kConfigApPassword);
+  Serial.println("Open setup page: http://192.168.4.1/");
+
+  const bool connected = wifiManager.autoConnect(kConfigApName, kConfigApPassword);
+  if (!connected) {
+    Serial.println("Wi-Fi provisioning timed out. Rebooting to retry...");
+    delay(1000);
+    ESP.restart();
+  }
+
+  Serial.println();
+  Serial.println("Wi-Fi connected");
   Serial.printf("Firmware: %s\n", kFirmwareVersion);
-  Serial.printf("SSID: %s\n", kApSsid);
-  Serial.printf("Password: %s\n", kApPassword);
-  Serial.printf("Open: http://%s/\n", ip.toString().c_str());
-  Serial.printf("Stream: http://%s/stream\n", ip.toString().c_str());
-  Serial.printf("Capture: http://%s/capture\n", ip.toString().c_str());
+  Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
+  Serial.printf("IP: http://%s/\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Stream: http://%s/stream\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Capture: http://%s/capture\n", WiFi.localIP().toString().c_str());
 }
 
 void startWebServer() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/capture", HTTP_GET, handleCapture);
   server.on("/stream", HTTP_GET, handleStream);
+  server.on("/resetwifi", HTTP_GET, handleResetWifi);
   server.onNotFound(handleNotFound);
   server.begin();
   Serial.println("HTTP server started");
@@ -244,8 +282,8 @@ void setup() {
   Serial.println("Booting ESP32-CAM web viewer...");
   Serial.printf("Firmware version: %s\n", kFirmwareVersion);
 
+  connectToRouter();
   configureCamera();
-  startAccessPoint();
   startWebServer();
 }
 
