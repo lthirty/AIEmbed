@@ -1,0 +1,455 @@
+# ESP32 AI辅助嵌入式设备项目交接与调试记录
+
+## 1. 项目目的
+
+本目录用于管理基于 `ESP32` 模块的嵌入式设备开发、烧录、串口监视和后续功能迭代。
+
+当前阶段目标已经完成：
+
+- 建立可用的 `VS Code + PlatformIO` 开发工程
+- 成功识别串口设备
+- 成功编译并烧录测试固件
+- 通过串口日志确认固件已经在目标板运行
+
+本文件用于后续人员快速接手项目，避免重复踩坑。
+
+## 2. 当前目录结构
+
+当前项目最小可用结构如下：
+
+```text
+12.AI辅助嵌入式设备/
+|- .gitignore
+|- CHANGELOG.md
+|- platformio.ini
+|- PROJECT_ONBOARDING.md
+`- src/
+   `- main.cpp
+```
+
+文件说明：
+
+- `platformio.ini`
+  PlatformIO 工程配置文件，定义板卡、串口、上传速率、监视速率等
+- `CHANGELOG.md`
+  项目版本记录，要求每次功能改动都追加记录
+- `src/main.cpp`
+  当前主固件，提供 ESP32-CAM 网页视频服务
+- `PROJECT_ONBOARDING.md`
+  本交接文档
+
+## 3. 当前硬件信息
+
+本次实际识别到的设备信息：
+
+- 串口号：`COM3`
+- USB 转串口芯片：`CH340`
+- 芯片型号：`ESP32-D0WDQ6`
+- 芯片修订版本：`revision v1.0`
+- MAC：`24:6f:28:7b:1f:50`
+
+说明：
+
+- 当前系统环境是 Windows
+- 当前接入设备通过 `CH340` 提供 USB 串口
+- 后续如果更换 USB 口，`COM` 端口号可能变化
+
+## 4. 开发环境
+
+### 4.1 软件环境
+
+已验证可用的软件环境如下：
+
+- `VS Code`
+- `PlatformIO IDE` 扩展
+- `PlatformIO Core 6.1.19`
+
+本机 PlatformIO 可执行文件实际位置：
+
+```powershell
+C:\Users\lthir\.platformio\penv\Scripts\platformio.exe
+```
+
+如果系统环境变量里没有 `pio`，可以直接用完整路径调用。
+
+### 4.2 Python 依赖修复
+
+本次调试中，PlatformIO 初次编译时缺少 `intelhex`，已补齐。
+
+补齐命令：
+
+```powershell
+& "$env:USERPROFILE\.platformio\penv\Scripts\pip.exe" install intelhex
+```
+
+如果后续再次遇到 `ModuleNotFoundError`，优先检查 PlatformIO 自带 Python 环境，而不是系统 Python。
+
+## 5. PlatformIO 工程配置
+
+当前 `platformio.ini` 内容对应的核心逻辑：
+
+- 板卡：`AI Thinker ESP32-CAM`
+- 框架：`Arduino`
+- 串口：`COM3`
+- 上传速率：`115200`
+- 串口监视波特率：`115200`
+
+当前配置适合目标：
+
+- 先打通 `upload + monitor`
+- 快速验证硬件、串口和工程链路
+
+不适合的目标：
+
+- 不包含 JTAG 断点调试
+- 不包含摄像头功能初始化
+- 不包含 Wi-Fi、HTTP、图像采集等业务逻辑
+
+## 6. 当前固件说明
+
+当前 `src/main.cpp` 是 `ESP32-CAM` 网页视频查看固件，作用是：
+
+- 初始化 `AI Thinker ESP32-CAM` 摄像头
+- 启动 `SoftAP`
+- 提供浏览器可访问的视频查看页面
+- 提供视频流和抓拍接口
+
+程序输出内容包括：
+
+- 固件启动标识
+- 固件版本号
+- 热点信息
+- Web 访问地址
+- 摄像头初始化失败信息
+
+典型输出示例：
+
+```text
+Booting ESP32-CAM web viewer...
+Firmware version: v0.2.0
+Wi-Fi AP started
+Firmware: v0.2.0
+SSID: ESP32-CAM-Viewer
+Password: 12345678
+Open: http://192.168.4.1/
+Stream: http://192.168.4.1/stream
+Capture: http://192.168.4.1/capture
+```
+
+浏览器访问方式：
+
+- 连接热点 `ESP32-CAM-Viewer`
+- 密码：`12345678`
+- 打开 `http://192.168.4.1/`
+
+## 7. 日常使用流程
+
+### 7.1 编译
+
+在当前项目目录执行：
+
+```powershell
+& "$env:USERPROFILE\.platformio\penv\Scripts\platformio.exe" run
+```
+
+### 7.2 烧录
+
+在当前项目目录执行：
+
+```powershell
+& "$env:USERPROFILE\.platformio\penv\Scripts\platformio.exe" run -t upload
+```
+
+### 7.3 打开串口监视
+
+```powershell
+& "$env:USERPROFILE\.platformio\penv\Scripts\platformio.exe" device monitor -p COM3 -b 115200
+```
+
+### 7.4 在 VS Code 中操作
+
+如果使用 VS Code 图形界面，可直接：
+
+1. 打开本目录
+2. 等待 PlatformIO 加载工程
+3. 点击 `Build`
+4. 点击 `Upload`
+5. 点击 `Monitor`
+
+## 8. ESP32-CAM 烧录注意事项
+
+这块板子属于 `ESP32-CAM` 类型，下载模式经常需要手动控制。
+
+### 8.1 进入下载模式
+
+如果上传失败，按下面顺序操作：
+
+1. 将 `GPIO0` 接 `GND`
+2. 按一下 `RST`，或者重新上电
+3. 执行烧录命令
+
+### 8.2 烧录完成后恢复运行模式
+
+1. 断开 `GPIO0` 和 `GND`
+2. 再按一次 `RST` 或重新上电
+3. 打开串口监视
+
+如果不把 `GPIO0` 松开，板子可能会一直留在 bootloader/download 模式，导致程序虽然已经烧录成功，但不会进入用户固件正常运行流程。
+
+## 9. 常见问题与处理方法
+
+### 9.1 `pio` 或 `platformio` 命令找不到
+
+现象：
+
+```text
+The term 'pio' is not recognized
+```
+
+处理：
+
+- 不要假设系统已经配置 PATH
+- 直接使用完整路径：
+
+```powershell
+& "$env:USERPROFILE\.platformio\penv\Scripts\platformio.exe"
+```
+
+### 9.2 串口被占用
+
+现象：
+
+```text
+Could not open COM3
+PermissionError(13, '拒绝访问')
+```
+
+原因：
+
+- 串口监视器没关
+- 其他串口工具占用了 `COM3`
+- 上一次 PlatformIO/Python 进程残留
+
+处理：
+
+- 关闭所有串口工具
+- 关闭 Arduino IDE / VS Code 串口窗口
+- 必要时结束残留进程
+
+可用于排查的 PowerShell：
+
+```powershell
+Get-Process | Where-Object {
+  $_.ProcessName -match 'platformio|pio|python|putty|ttermpro|SecureCRT|CoolTerm'
+} | Select-Object ProcessName, Id, Path
+```
+
+### 9.3 无法连接 ESP32
+
+现象：
+
+```text
+Failed to connect to ESP32: No serial data received
+```
+
+优先检查：
+
+- 板子是否已进入下载模式
+- `GPIO0` 是否正确接地
+- 是否按过 `RST`
+- USB 转串口线接法是否正确
+- 供电是否稳定
+
+### 9.4 烧录成功但串口没日志
+
+可能原因：
+
+- `GPIO0` 没松开，板子仍在下载模式
+- 波特率不对
+- 串口监视器没连到正确端口
+- 板子没有复位
+
+处理顺序：
+
+1. 断开 `GPIO0-GND`
+2. 按 `RST`
+3. 用 `115200` 重新打开 `COM3`
+
+### 9.5 启动时前面有乱码
+
+这是正常现象之一。ESP32 上电启动 ROM 日志和用户程序串口初始化之间可能出现短暂乱码。只要后续用户日志正常，比如 `alive: ...`，就说明程序已正常运行。
+
+## 10. 本次实际调试记录
+
+以下记录对应本次接手调试过程，便于后续排查历史问题。
+
+### 10.1 2026-05-03 初始状态
+
+- 当前目录基本为空，仅有 `.vs`
+- 未发现现成 PlatformIO 工程
+- PlatformIO IDE 已安装，但 `pio` 未进入系统 PATH
+
+### 10.2 识别环境
+
+确认结果：
+
+- PlatformIO Core 可通过完整路径调用
+- 实际设备串口为 `COM3`
+- 设备描述为 `USB-SERIAL CH340`
+
+### 10.3 建立最小工程
+
+已创建：
+
+- `platformio.ini`
+- `src/main.cpp`
+- `.gitignore`
+
+工程策略：
+
+- 使用 `Arduino` 框架
+- 目标先完成 `upload + monitor`
+- 不直接迁移旧 ESP-IDF 摄像头工程
+
+选择原因：
+
+- 先验证板子、串口、烧录链路是否正常
+- 避免把“环境问题”和“业务代码问题”混在一起
+
+### 10.4 修复编译环境
+
+首次编译失败原因：
+
+```text
+ModuleNotFoundError: No module named 'intelhex'
+```
+
+已处理：
+
+- 安装 `intelhex`
+
+结果：
+
+- 编译成功
+
+### 10.5 解决串口占用
+
+上传过程中多次遇到：
+
+```text
+PermissionError(13, '拒绝访问')
+```
+
+已处理：
+
+- 关闭残留 `platformio/python` 进程
+
+结果：
+
+- 串口恢复可用
+
+### 10.6 成功烧录
+
+最终成功烧录时的关键信息：
+
+```text
+Chip is ESP32-D0WDQ6 (revision v1.0)
+MAC: 24:6f:28:7b:1f:50
+Hash of data verified.
+Leaving...
+Hard resetting via RTS pin...
+```
+
+说明：
+
+- 目标板已被真实识别
+- Flash 写入完成并校验通过
+
+### 10.7 串口确认程序已运行
+
+在松开 `GPIO0` 并复位后，成功读取到串口日志：
+
+```text
+alive: 16997 ms, loop=15
+alive: 17997 ms, loop=16
+alive: 18997 ms, loop=17
+alive: 19997 ms, loop=18
+alive: 20997 ms, loop=19
+alive: 21997 ms, loop=20
+alive: 22997 ms, loop=21
+alive: 23997 ms, loop=22
+```
+
+结论：
+
+- 当前测试固件已经在设备上正常运行
+- 当前开发链路 `编译 -> 烧录 -> 串口验证` 已打通
+
+## 11. 接手人员建议工作顺序
+
+建议不要一上来就接入复杂业务代码，按下面顺序推进：
+
+1. 先用当前测试工程确认自己电脑也能 `upload + monitor`
+2. 确认串口号是否仍为 `COM3`
+3. 确认自己掌握 `GPIO0 + RST` 的下载模式操作
+4. 在当前测试程序基础上增加简单功能
+5. 再接入摄像头、Wi-Fi、网络服务等模块
+
+这样做的好处：
+
+- 能快速区分“硬件链路问题”和“业务代码问题”
+- 降低多人接手时的排查成本
+
+## 12. 后续建议
+
+后续建议按优先级推进：
+
+### 12.1 短期
+
+- 把测试程序扩展成 `LED / GPIO / Wi-Fi` 自检程序
+- 固化一套标准接线图
+- 记录实际使用的供电方式
+
+### 12.2 中期
+
+- 接入 `ESP32-CAM` 摄像头初始化代码
+- 明确板级引脚定义
+- 将串口日志格式统一，便于排查
+
+### 12.3 长期
+
+- 补充正式 `README`
+- 引入版本管理规范
+- 将烧录命令、接线、日志判定标准流程化
+
+## 13. 版本与 GitHub 同步规范
+
+后续每次修改都执行以下约定：
+
+1. 先修改代码或文档
+2. 同步更新 `CHANGELOG.md`
+3. 如果涉及固件行为变化，同步更新 `src/main.cpp` 中的版本号和版本历史注释
+4. 如果涉及使用方式变化，同步更新本文件
+5. 提交到 git
+6. 同步推送到 GitHub
+
+建议提交信息格式：
+
+```text
+feat: add xxx
+fix: resolve xxx
+docs: update onboarding and changelog
+```
+
+## 14. 快速检查清单
+
+新成员接手时，可按以下顺序快速自检：
+
+- 能打开本目录并识别 PlatformIO 工程
+- 能执行 `platformio run`
+- 能识别到串口设备
+- 能进入下载模式
+- 能执行 `upload`
+- 能在 `115200` 波特率看到 `alive: ...`
+
+只要这几项全部通过，就说明项目基础开发环境已经可用。
