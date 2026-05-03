@@ -390,6 +390,17 @@ http://127.0.0.1:8000/
 - AI 配置保存在本地 `ai_provider_config.json`
 - 可直接双击 `start_ai_viewer.bat` 启动本地页面和代理服务
 
+当前默认预设：
+
+- 提供方：`DeepSeek`
+- API Base URL：`https://api.deepseek.com/chat/completions`
+- Model：`deepseek-v4-flash`
+
+说明：
+
+- DeepSeek 官方文档当前主示例是 `chat/completions` 风格接口
+- 本地代理现在同时兼容 `responses` 和 `chat/completions` 两种接口模式
+
 ## 12. 本次实际调试记录
 
 以下记录对应本次接手调试过程，便于后续排查历史问题。

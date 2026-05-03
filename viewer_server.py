@@ -14,10 +14,10 @@ PORT = 8000
 STATIC_DIR = Path(__file__).parent / "webapp"
 CONFIG_PATH = Path(__file__).parent / "ai_provider_config.json"
 DEFAULT_PROVIDER_CONFIG = {
-    "providerName": os.getenv("AI_PROVIDER_NAME", "OpenAI-compatible").strip() or "OpenAI-compatible",
-    "apiBaseUrl": os.getenv("OPENAI_API_URL", "https://api.openai.com/v1/responses").strip() or "https://api.openai.com/v1/responses",
+    "providerName": os.getenv("AI_PROVIDER_NAME", "DeepSeek").strip() or "DeepSeek",
+    "apiBaseUrl": os.getenv("OPENAI_API_URL", "https://api.deepseek.com/chat/completions").strip() or "https://api.deepseek.com/chat/completions",
     "apiKey": os.getenv("OPENAI_API_KEY", "").strip(),
-    "model": os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip() or "gpt-5.4-mini",
+    "model": os.getenv("OPENAI_MODEL", "deepseek-v4-flash").strip() or "deepseek-v4-flash",
 }
 
 
@@ -50,7 +50,14 @@ def fetch_camera_snapshot(device_ip: str) -> bytes:
         return response.read()
 
 
-def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]], model: str) -> dict:
+def infer_api_mode(api_base_url: str) -> str:
+    normalized = api_base_url.strip().lower()
+    if normalized.endswith("/chat/completions"):
+        return "chat_completions"
+    return "responses"
+
+
+def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]], model: str, api_mode: str) -> dict:
     image_data_url = "data:image/jpeg;base64," + base64.b64encode(image_bytes).decode("ascii")
     system_text = (
         "You are analyzing the latest frame from an ESP32-CAM video feed. "
@@ -58,24 +65,37 @@ def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dic
         "If the frame is unclear, say so explicitly."
     )
 
-    items: list[dict] = [
-        {
-            "role": "system",
-            "content": [{"type": "input_text", "text": system_text}],
-        }
-    ]
+    if api_mode == "chat_completions":
+        messages: list[dict] = [{"role": "system", "content": system_text}]
+        for message in chat_history[-8:]:
+            role = message.get("role", "user")
+            text = message.get("text", "").strip()
+            if not text or role not in {"user", "assistant"}:
+                continue
+            messages.append({"role": role, "content": text})
 
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            }
+        )
+        return {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
+
+    items: list[dict] = [{"role": "system", "content": [{"type": "input_text", "text": system_text}]}]
     for message in chat_history[-8:]:
         role = message.get("role", "user")
         text = message.get("text", "").strip()
         if not text or role not in {"user", "assistant"}:
             continue
-        items.append(
-            {
-                "role": role,
-                "content": [{"type": "input_text", "text": text}],
-            }
-        )
+        items.append({"role": role, "content": [{"type": "input_text", "text": text}]})
 
     items.append(
         {
@@ -93,7 +113,23 @@ def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dic
     }
 
 
-def parse_response_text(payload: dict) -> str:
+def parse_response_text(payload: dict, api_mode: str) -> str:
+    if api_mode == "chat_completions":
+        choices = payload.get("choices", [])
+        if choices:
+            message = choices[0].get("message", {})
+            content = message.get("content")
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+            if isinstance(content, list):
+                chunks: list[str] = []
+                for item in content:
+                    text = item.get("text")
+                    if isinstance(text, str) and text.strip():
+                        chunks.append(text.strip())
+                if chunks:
+                    return "\n".join(chunks)
+
     if isinstance(payload.get("output_text"), str) and payload["output_text"].strip():
         return payload["output_text"].strip()
 
@@ -118,7 +154,8 @@ def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, st
     if not model:
         raise RuntimeError("Model is not configured.")
 
-    payload = build_openai_payload(prompt, image_bytes, chat_history, model)
+    api_mode = infer_api_mode(api_base_url)
+    payload = build_openai_payload(prompt, image_bytes, chat_history, model, api_mode)
     request = urllib.request.Request(
         api_base_url,
         data=json.dumps(payload).encode("utf-8"),
@@ -136,7 +173,7 @@ def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, st
         error_body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Provider API error {exc.code}: {error_body}") from exc
 
-    answer = parse_response_text(response_payload)
+    answer = parse_response_text(response_payload, api_mode)
     if not answer:
         raise RuntimeError("Provider API returned no text output.")
     return answer
