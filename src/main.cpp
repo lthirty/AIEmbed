@@ -10,14 +10,17 @@ namespace {
 // v0.1.0 - PlatformIO minimal serial heartbeat test
 // v0.2.0 - ESP32-CAM SoftAP web viewer with /stream and /capture
 // v0.3.0 - WiFiManager provisioning portal, router LAN access, WiFi reset endpoint
-constexpr char kFirmwareVersion[] = "v0.3.0";
+// v0.4.0 - Serial IP reporting improvements for customer setup and local AI viewer support
+constexpr char kFirmwareVersion[] = "v0.4.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";
 constexpr char kConfigApPassword[] = "12345678";
 constexpr uint32_t kConfigPortalTimeoutSeconds = 300;
+constexpr uint32_t kSerialIpReportIntervalMs = 30000;
 
 WebServer server(80);
 WiFiManager wifiManager;
+uint32_t lastSerialIpReportMs = 0;
 
 static const char kIndexHtml[] PROGMEM = R"rawliteral(
 <!doctype html>
@@ -123,6 +126,20 @@ String buildIndexHtml() {
   html.replace("%VERSION%", kFirmwareVersion);
   html.replace("%IP%", WiFi.localIP().toString());
   return html;
+}
+
+void printDeviceIpBanner() {
+  Serial.println();
+  Serial.println("========== DEVICE NETWORK INFO ==========");
+  Serial.printf("Firmware: %s\n", kFirmwareVersion);
+  Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
+  Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Viewer: http://%s/\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Stream: http://%s/stream\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Snapshot: http://%s/capture\n", WiFi.localIP().toString().c_str());
+  Serial.printf("Reset Wi-Fi: http://%s/resetwifi\n", WiFi.localIP().toString().c_str());
+  Serial.println("Type 'ip' or 'info' in the serial terminal to print this again.");
+  Serial.println("=========================================");
 }
 
 void configureCamera() {
@@ -256,11 +273,7 @@ void connectToRouter() {
 
   Serial.println();
   Serial.println("Wi-Fi connected");
-  Serial.printf("Firmware: %s\n", kFirmwareVersion);
-  Serial.printf("SSID: %s\n", WiFi.SSID().c_str());
-  Serial.printf("IP: http://%s/\n", WiFi.localIP().toString().c_str());
-  Serial.printf("Stream: http://%s/stream\n", WiFi.localIP().toString().c_str());
-  Serial.printf("Capture: http://%s/capture\n", WiFi.localIP().toString().c_str());
+  printDeviceIpBanner();
 }
 
 void startWebServer() {
@@ -285,8 +298,22 @@ void setup() {
   connectToRouter();
   configureCamera();
   startWebServer();
+  lastSerialIpReportMs = millis();
 }
 
 void loop() {
   server.handleClient();
+
+  while (Serial.available() > 0) {
+    const String command = Serial.readStringUntil('\n');
+    if (command.equalsIgnoreCase("ip") || command.equalsIgnoreCase("info")) {
+      printDeviceIpBanner();
+      lastSerialIpReportMs = millis();
+    }
+  }
+
+  if (WiFi.status() == WL_CONNECTED && millis() - lastSerialIpReportMs >= kSerialIpReportIntervalMs) {
+    printDeviceIpBanner();
+    lastSerialIpReportMs = millis();
+  }
 }

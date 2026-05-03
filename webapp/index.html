@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ESP32-CAM AI Viewer</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">ESP32-CAM · AI Viewer</p>
+        <h1>输入设备 IP，直接看实时视频，并结合当前画面与 AI 讨论</h1>
+        <p class="subtext">中间区域直接显示摄像头实时视频。右侧每次提问都会抓取当前画面的一帧，连同你的问题一起发给 AI 分析。</p>
+      </div>
+      <div class="hero-card">
+        <div class="status-row">
+          <span>OpenAI</span>
+          <strong id="openai-status">检查中</strong>
+        </div>
+        <div class="status-row">
+          <span>Model</span>
+          <strong id="openai-model">-</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <section class="panel controls-panel">
+        <h2>设备连接</h2>
+        <label>
+          设备 IP
+          <div class="inline-inputs">
+            <input id="device-ip" type="text" value="192.168.2.116" placeholder="例如 192.168.2.116">
+            <button id="connect-btn" type="button">连接设备</button>
+          </div>
+        </label>
+        <p class="helper">这里输入纯 IP 即可，不要带 `http://`。页面中部会直接显示视频流。</p>
+
+        <div class="quick-links">
+          <a id="open-home" href="#" target="_blank" rel="noopener">打开设备首页</a>
+          <a id="open-stream" href="#" target="_blank" rel="noopener">打开视频流地址</a>
+          <a id="open-capture" href="#" target="_blank" rel="noopener">打开抓拍地址</a>
+        </div>
+
+        <div class="probe-box">
+          <button id="probe-btn" type="button">检测设备是否在线</button>
+          <p id="probe-result" class="helper">尚未检测</p>
+        </div>
+      </section>
+
+      <section class="panel video-panel">
+        <div class="panel-head">
+          <h2>实时视频画面</h2>
+          <button id="refresh-stream" type="button">刷新视频流</button>
+        </div>
+        <img id="stream-frame" alt="ESP32-CAM stream">
+      </section>
+
+      <section class="panel chat-panel">
+        <div class="panel-head">
+          <h2>AI 图像分析</h2>
+          <button id="clear-chat" type="button">清空对话</button>
+        </div>
+        <div id="messages" class="messages"></div>
+        <label>
+          输入问题
+          <textarea id="prompt-input" rows="4" placeholder="例如：画面里有什么？有没有人？有没有二维码？当前亮度是否异常？"></textarea>
+        </label>
+        <div class="chat-actions">
+          <button id="analyze-btn" type="button">分析当前画面</button>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

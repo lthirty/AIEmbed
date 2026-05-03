@@ -24,6 +24,11 @@
 |- CHANGELOG.md
 |- platformio.ini
 |- PROJECT_ONBOARDING.md
+|- viewer_server.py
+`- webapp/
+   |- index.html
+   |- app.js
+   `- styles.css
 `- src/
    `- main.cpp
 ```
@@ -36,6 +41,10 @@
   项目版本记录，要求每次功能改动都追加记录
 - `src/main.cpp`
   当前主固件，提供 ESP32-CAM 网页视频服务
+- `viewer_server.py`
+  本地 Web 控制台服务，负责页面托管、抓拍代理和 OpenAI API 调用
+- `webapp/*`
+  本地浏览器页面，输入设备 IP 后显示实时视频并支持 AI 对话分析
 - `PROJECT_ONBOARDING.md`
   本交接文档
 
@@ -115,6 +124,7 @@ C:\Users\lthir\.platformio\penv\Scripts\platformio.exe
 - 自动连接用户配置的路由器 Wi-Fi
 - 在路由器局域网内提供浏览器可访问的视频查看页面
 - 提供视频流和抓拍接口
+- 通过串口重复输出设备 IP，便于客户直接抄录访问地址
 
 程序输出内容包括：
 
@@ -124,22 +134,26 @@ C:\Users\lthir\.platformio\penv\Scripts\platformio.exe
 - 路由器连接结果
 - Web 访问地址
 - 摄像头初始化失败信息
+- 周期性的 IP 信息回显
 
 典型输出示例：
 
 ```text
 Booting ESP32-CAM web viewer...
-Firmware version: v0.3.0
+Firmware version: v0.4.0
 Starting Wi-Fi provisioning flow...
 If needed, connect to setup AP: ESP32-CAM-Setup
 Setup password: 12345678
 Open setup page: http://192.168.4.1/
 Wi-Fi connected
-Firmware: v0.3.0
+========== DEVICE NETWORK INFO ==========
+Firmware: v0.4.0
 SSID: YourRouterWiFi
-IP: http://192.168.1.123/
+IP: 192.168.1.123
+Viewer: http://192.168.1.123/
 Stream: http://192.168.1.123/stream
-Capture: http://192.168.1.123/capture
+Snapshot: http://192.168.1.123/capture
+Type 'ip' or 'info' in the serial terminal to print this again.
 ```
 
 浏览器访问方式：
@@ -149,6 +163,12 @@ Capture: http://192.168.1.123/capture
 - 打开 `http://192.168.4.1/`
 - 在配网页面中选择并填写路由器 Wi-Fi
 - 设备连上路由器后，改用串口打印出的局域网 IP 访问
+
+串口辅助说明：
+
+- 设备连上 Wi-Fi 后会打印完整访问地址
+- 在串口终端输入 `ip` 或 `info`，设备会重新打印一次
+- 固件还会每 30 秒自动重复输出一次 IP 信息
 
 ## 7. 日常使用流程
 
@@ -326,7 +346,58 @@ Failed to connect to ESP32: No serial data received
 
 这是正常现象之一。ESP32 上电启动 ROM 日志和用户程序串口初始化之间可能出现短暂乱码。只要后续用户日志正常，比如 `alive: ...`，就说明程序已正常运行。
 
-## 11. 本次实际调试记录
+## 11. 本地 Web AI 控制台
+
+本项目新增一个运行在电脑本地的 Web 控制台。
+
+作用：
+
+- 输入设备 IP
+- 中间区域直接显示实时视频画面
+- 右侧输入问题，请 AI 根据当前抓拍画面做分析
+
+### 11.1 启动方式
+
+先设置 OpenAI API Key：
+
+```powershell
+$env:OPENAI_API_KEY="你的OpenAIKey"
+```
+
+可选设置模型：
+
+```powershell
+$env:OPENAI_MODEL="gpt-5.4-mini"
+```
+
+启动本地服务：
+
+```powershell
+python viewer_server.py
+```
+
+打开浏览器：
+
+```text
+http://127.0.0.1:8000/
+```
+
+### 11.2 使用方式
+
+1. 输入设备 IP，例如 `192.168.2.116`
+2. 点击“连接设备”
+3. 中间区域显示实时视频流
+4. 右侧输入问题
+5. 点击“分析当前画面”
+6. 系统会抓取当前视频帧并发送给 AI 分析
+
+### 11.3 设计限制
+
+- 当前 AI 分析基于“当前抓拍的一帧”，不是整段视频时序理解
+- 如果设备视频流正常，但抓拍接口异常，AI 分析会失败
+- OpenAI API 调用通过本地 Python 代理完成，需要本机能联网并已配置 API Key
+
+## 12. 本次实际调试记录
 
 以下记录对应本次接手调试过程，便于后续排查历史问题。
 
@@ -448,7 +519,7 @@ alive: 23997 ms, loop=22
 - 配网成功后自动切到路由器网络
 - 增加 `/resetwifi` 以便重新配网
 
-## 12. 接手人员建议工作顺序
+## 13. 接手人员建议工作顺序
 
 建议不要一上来就接入复杂业务代码，按下面顺序推进：
 
@@ -463,7 +534,7 @@ alive: 23997 ms, loop=22
 - 能快速区分“硬件链路问题”和“业务代码问题”
 - 降低多人接手时的排查成本
 
-## 13. 后续建议
+## 14. 后续建议
 
 后续建议按优先级推进：
 
@@ -485,7 +556,7 @@ alive: 23997 ms, loop=22
 - 引入版本管理规范
 - 将烧录命令、接线、日志判定标准流程化
 
-## 14. 版本与 GitHub 同步规范
+## 15. 版本与 GitHub 同步规范
 
 后续每次修改都执行以下约定：
 
@@ -504,7 +575,7 @@ fix: resolve xxx
 docs: update onboarding and changelog
 ```
 
-## 15. 快速检查清单
+## 16. 快速检查清单
 
 新成员接手时，可按以下顺序快速自检：
 

@@ -2,6 +2,13 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.4.0 - 2026-05-03
+
+- Improved serial IP reporting for the ESP32-CAM firmware.
+- Added serial `ip` / `info` commands to reprint the current LAN address.
+- Added periodic serial IP banner output for easier customer setup.
+- Added a local web viewer and AI analysis workflow design.
+
 ## v0.3.0 - 2026-05-03
 
 - Replaced the fixed camera hotspot workflow with `WiFiManager` provisioning.
