@@ -14,6 +14,16 @@
 
 本文件用于后续人员快速接手项目，避免重复踩坑。
 
+当前产品方向已经明确调整为：
+
+**嵌入式自动测试与问题证据管理模块**
+
+说明：
+
+- AI 是辅助能力，不是产品主卖点
+- 主线是自动测试、证据采集、问题 session 管理和 case 沉淀
+- 后续详细需求以 [PRODUCT_REQUIREMENTS_MVP.md](</f:/05.理财/31.商品/10.正式商品化/12.AI辅助嵌入式设备/PRODUCT_REQUIREMENTS_MVP.md>) 为准
+
 ## 2. 当前目录结构
 
 当前项目最小可用结构如下：
@@ -22,6 +32,7 @@
 12.AI辅助嵌入式设备/
 |- .gitignore
 |- CHANGELOG.md
+|- PRODUCT_REQUIREMENTS_MVP.md
 |- platformio.ini
 |- PROJECT_ONBOARDING.md
 |- start_ai_viewer.bat
@@ -42,6 +53,8 @@
   PlatformIO 工程配置文件，定义板卡、串口、上传速率、监视速率等
 - `CHANGELOG.md`
   项目版本记录，要求每次功能改动都追加记录
+- `PRODUCT_REQUIREMENTS_MVP.md`
+  当前产品主线、MVP边界、数据结构和实施顺序的规格草案；后续需求以该文档为主参考
 - `src/main.cpp`
   当前主固件，提供 ESP32-CAM 网页视频服务
 - `viewer_server.py`

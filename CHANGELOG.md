@@ -2,6 +2,13 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.9.0 - 2026-05-04
+
+- Added `PRODUCT_REQUIREMENTS_MVP.md` to formally reposition the product from an AI-first debug page to an embedded auto-test, evidence, session, and case workflow.
+- Refined the product mainline around `自动测试 + 证据采集 + session 管理 + case 沉淀`, with AI explicitly treated as an auxiliary capability.
+- Defined MVP module boundaries, data models, page architecture, and phased implementation order for `device / test_case / test_run / evidence / session / case`.
+- Bumped the local workbench version to `v0.9.0` to mark the product-direction milestone.
+
 ## v0.8.1 - 2026-05-03
 
 - Fixed multipart upload handling for `资料导入` so file upload no longer throws `Cannot be converted to bool.`
