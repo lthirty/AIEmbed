@@ -2,6 +2,16 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.6.0 - 2026-05-03
+
+- Repositioned the local web tool from camera-first chat to a session-centric prototype debugging workbench.
+- Added local SQLite-backed storage for `session`, `evidence`, and `analysis` objects.
+- Added customer material import with file persistence and basic text extraction for `txt/md/log/json/csv/yaml/pdf`.
+- Added evidence collection flows for manual notes, pasted serial logs, and optional ESP32-CAM snapshot capture.
+- Added structured AI analysis based on imported materials and collected evidence instead of image-only chat.
+- Replaced the main page with a workbench UI focused on session creation, evidence collection, and structured analysis history.
+- Added `local_data/` to `.gitignore` so local sessions and uploaded customer materials are not committed.
+
 ## v0.5.1 - 2026-05-03
 
 - Changed the default MiniMax API route from the Anthropic-compatible path to the official `https://api.minimaxi.com/v1/chat/completions`.

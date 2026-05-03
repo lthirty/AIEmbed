@@ -1,17 +1,4 @@
 const elements = {
-  deviceIp: document.getElementById("device-ip"),
-  connectBtn: document.getElementById("connect-btn"),
-  streamFrame: document.getElementById("stream-frame"),
-  openHome: document.getElementById("open-home"),
-  openStream: document.getElementById("open-stream"),
-  openCapture: document.getElementById("open-capture"),
-  probeBtn: document.getElementById("probe-btn"),
-  probeResult: document.getElementById("probe-result"),
-  messages: document.getElementById("messages"),
-  promptInput: document.getElementById("prompt-input"),
-  analyzeBtn: document.getElementById("analyze-btn"),
-  clearChat: document.getElementById("clear-chat"),
-  refreshStream: document.getElementById("refresh-stream"),
   providerStatus: document.getElementById("provider-status"),
   providerModel: document.getElementById("provider-model"),
   providerName: document.getElementById("provider-name"),
@@ -21,127 +8,213 @@ const elements = {
   providerModelInput: document.getElementById("provider-model-input"),
   saveProviderBtn: document.getElementById("save-provider-btn"),
   providerSaveResult: document.getElementById("provider-save-result"),
-  currentQuestion: document.getElementById("current-question"),
+  sessionTitle: document.getElementById("session-title"),
+  sessionCustomer: document.getElementById("session-customer"),
+  deviceIp: document.getElementById("device-ip"),
+  createSessionBtn: document.getElementById("create-session-btn"),
+  sessionsList: document.getElementById("sessions-list"),
+  activeSessionLabel: document.getElementById("active-session-label"),
+  materialTitle: document.getElementById("material-title"),
+  materialFile: document.getElementById("material-file"),
+  uploadMaterialBtn: document.getElementById("upload-material-btn"),
+  materialResult: document.getElementById("material-result"),
+  logTitle: document.getElementById("log-title"),
+  logContent: document.getElementById("log-content"),
+  saveLogBtn: document.getElementById("save-log-btn"),
+  noteTitle: document.getElementById("note-title"),
+  noteContent: document.getElementById("note-content"),
+  saveNoteBtn: document.getElementById("save-note-btn"),
+  captureSnapshotBtn: document.getElementById("capture-snapshot-btn"),
+  snapshotResult: document.getElementById("snapshot-result"),
+  evidenceCount: document.getElementById("evidence-count"),
+  evidenceList: document.getElementById("evidence-list"),
+  analysisRequest: document.getElementById("analysis-request"),
+  captureBeforeAnalyze: document.getElementById("capture-before-analyze"),
+  analyzeBtn: document.getElementById("analyze-btn"),
   workflowSteps: document.getElementById("workflow-steps"),
+  analysisResult: document.getElementById("analysis-result"),
+  analysisCount: document.getElementById("analysis-count"),
+  analysisHistory: document.getElementById("analysis-history"),
 };
 
 const state = {
-  history: [],
   apiConfigured: false,
+  sessions: [],
+  activeSessionId: "",
 };
 
 const workflowTemplate = [
-  { key: "frame", name: "1. 获取当前视频画面", state: "pending", detail: "等待开始" },
-  { key: "encoding", name: "2. 编码图片并准备上传", state: "pending", detail: "等待开始" },
-  { key: "providerCheck", name: "3. 校验 AI 配置与能力", state: "pending", detail: "等待开始" },
-  { key: "request", name: "4. 发送 AI 请求", state: "pending", detail: "等待开始" },
-  { key: "response", name: "5. 解析 AI 返回", state: "pending", detail: "等待开始" },
+  { key: "session", name: "1. 读取会话与证据", state: "pending", detail: "等待开始" },
+  { key: "snapshot", name: "2. 可选抓拍补充证据", state: "pending", detail: "等待开始" },
+  { key: "provider", name: "3. 校验 AI 配置", state: "pending", detail: "等待开始" },
+  { key: "request", name: "4. 发送分析请求", state: "pending", detail: "等待开始" },
+  { key: "response", name: "5. 解析结构化结果", state: "pending", detail: "等待开始" },
 ];
 
 let workflowState = [];
 
-function normalizeIp(value) {
-  return value.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+function activeSession() {
+  return state.sessions.find((item) => item.id === state.activeSessionId) || null;
 }
 
-function cameraUrl(path) {
-  const ip = normalizeIp(elements.deviceIp.value);
-  return ip ? `http://${ip}${path}` : "#";
+function resetWorkflow() {
+  workflowState = workflowTemplate.map((item) => ({ ...item }));
+  renderWorkflow();
 }
 
-function refreshCameraLinks() {
-  elements.openHome.href = cameraUrl("/");
-  elements.openStream.href = cameraUrl("/stream");
-  elements.openCapture.href = cameraUrl("/capture");
-  elements.streamFrame.src = `${cameraUrl("/stream")}?t=${Date.now()}`;
-}
-
-function capturePreviewFrameDataUrl() {
-  const image = elements.streamFrame;
-  const width = image.naturalWidth || image.width;
-  const height = image.naturalHeight || image.height;
-
-  if (!width || !height) {
-    throw new Error("视频预览还没有可用帧。");
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", 0.85);
-}
-
-function addMessage(role, text) {
-  state.history.push({ role, text });
-
-  const message = document.createElement("article");
-  message.className = `message ${role}`;
-
-  const roleLabel = document.createElement("span");
-  roleLabel.className = "role";
-  roleLabel.textContent = role === "assistant" ? "AI" : role === "user" ? "User" : "System";
-
-  const body = document.createElement("div");
-  body.textContent = text;
-
-  message.append(roleLabel, body);
-  elements.messages.prepend(message);
-  elements.messages.scrollTop = 0;
+function updateWorkflow(key, nextState, detail) {
+  const item = workflowState.find((step) => step.key === key);
+  if (!item) return;
+  item.state = nextState;
+  item.detail = detail;
+  renderWorkflow();
 }
 
 function renderWorkflow() {
   elements.workflowSteps.innerHTML = "";
   for (const step of workflowState) {
-    const item = document.createElement("article");
-    item.className = `workflow-step ${step.state}`;
+    const article = document.createElement("article");
+    article.className = `workflow-step ${step.state}`;
 
     const head = document.createElement("div");
     head.className = "step-head";
 
-    const name = document.createElement("span");
-    name.className = "step-name";
-    name.textContent = step.name;
+    const title = document.createElement("span");
+    title.className = "step-name";
+    title.textContent = step.name;
 
-    const state = document.createElement("span");
-    state.className = "step-state";
-    state.textContent = step.state.toUpperCase();
+    const status = document.createElement("span");
+    status.className = "step-state";
+    status.textContent = step.state.toUpperCase();
 
     const detail = document.createElement("div");
     detail.className = "step-detail";
     detail.textContent = step.detail;
 
-    head.append(name, state);
-    item.append(head, detail);
-    elements.workflowSteps.appendChild(item);
+    head.append(title, status);
+    article.append(head, detail);
+    elements.workflowSteps.appendChild(article);
   }
 }
 
-function resetWorkflow() {
-  workflowState = workflowTemplate.map((step) => ({ ...step }));
-  renderWorkflow();
+function requireSession() {
+  if (!state.activeSessionId) {
+    window.alert("请先创建或选择一个会话。");
+    throw new Error("no active session");
+  }
 }
 
-function updateWorkflow(key, state, detail) {
-  const item = workflowState.find((step) => step.key === key);
-  if (!item) return;
-  item.state = state;
-  item.detail = detail;
-  renderWorkflow();
+function renderSessions() {
+  elements.sessionsList.innerHTML = "";
+  if (!state.sessions.length) {
+    const empty = document.createElement("p");
+    empty.className = "helper";
+    empty.textContent = "还没有会话。先创建一个客户调试会话。";
+    elements.sessionsList.appendChild(empty);
+    return;
+  }
+
+  for (const session of state.sessions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `session-chip ${session.id === state.activeSessionId ? "active" : ""}`;
+    button.textContent = `${session.title} · ${session.customerName || "未填客户"}`;
+    button.addEventListener("click", () => {
+      state.activeSessionId = session.id;
+      loadSessionDetail(session.id).catch(showGenericError);
+    });
+    elements.sessionsList.appendChild(button);
+  }
 }
 
-function resetChat() {
-  state.history = [];
-  elements.messages.innerHTML = "";
-  elements.currentQuestion.textContent = "尚未提问";
-  resetWorkflow();
-  addMessage("system", "输入设备 IP，点击“连接设备”后，中间区域会显示实时视频。每次点击“分析当前画面”都会抓取最新一帧发给 AI。");
+function renderEvidence(evidence) {
+  elements.evidenceCount.textContent = `${evidence.length} 条`;
+  elements.evidenceList.innerHTML = "";
+  if (!evidence.length) {
+    const empty = document.createElement("p");
+    empty.className = "helper";
+    empty.textContent = "当前会话还没有证据。先导入资料、日志或备注。";
+    elements.evidenceList.appendChild(empty);
+    return;
+  }
+
+  for (const item of evidence) {
+    const article = document.createElement("article");
+    article.className = "evidence-card";
+
+    const title = document.createElement("div");
+    title.className = "evidence-title";
+    title.textContent = `${item.kind} · ${item.title}`;
+
+    const meta = document.createElement("div");
+    meta.className = "evidence-meta";
+    meta.textContent = `${item.createdAt}${item.fileName ? ` · ${item.fileName}` : ""}`;
+
+    const body = document.createElement("pre");
+    body.className = "evidence-pre";
+    body.textContent = item.contentText || JSON.stringify(item.meta || {}, null, 2);
+
+    article.append(title, meta, body);
+    elements.evidenceList.appendChild(article);
+  }
+}
+
+function renderAnalyses(analyses) {
+  elements.analysisCount.textContent = `${analyses.length} 条`;
+  elements.analysisHistory.innerHTML = "";
+  if (!analyses.length) {
+    const empty = document.createElement("p");
+    empty.className = "helper";
+    empty.textContent = "还没有结构化分析结果。";
+    elements.analysisHistory.appendChild(empty);
+    elements.analysisResult.textContent = "尚未分析";
+    return;
+  }
+
+  elements.analysisResult.textContent = JSON.stringify(analyses[0].result, null, 2);
+
+  for (const analysis of analyses) {
+    const article = document.createElement("article");
+    article.className = "message assistant";
+
+    const role = document.createElement("span");
+    role.className = "role";
+    role.textContent = `${analysis.createdAt} · ${analysis.requestText}`;
+
+    const body = document.createElement("pre");
+    body.className = "log-pre";
+    body.textContent = JSON.stringify(analysis.result, null, 2);
+
+    article.append(role, body);
+    elements.analysisHistory.appendChild(article);
+  }
+}
+
+function showGenericError(error) {
+  console.error(error);
+  window.alert(error.message || "操作失败");
+}
+
+async function apiGet(url) {
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "request failed");
+  return data;
+}
+
+async function apiPost(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "request failed");
+  return data;
 }
 
 async function loadConfig() {
-  const response = await fetch("/api/config");
-  const data = await response.json();
+  const data = await apiGet("/api/config");
   elements.providerName.value = data.providerName || "";
   elements.apiBaseUrl.value = data.apiBaseUrl || "";
   elements.apiKey.value = "";
@@ -158,174 +231,206 @@ async function loadConfig() {
   }
 }
 
-async function probeDevice() {
-  const ip = normalizeIp(elements.deviceIp.value);
-  if (!ip) {
-    elements.probeResult.textContent = "请先输入设备 IP。";
-    elements.probeResult.classList.add("error");
-    return;
+async function loadSessions() {
+  const data = await apiGet("/api/sessions");
+  state.sessions = data.sessions || [];
+  if (!state.activeSessionId && state.sessions.length) {
+    state.activeSessionId = state.sessions[0].id;
   }
-
-  elements.probeResult.textContent = "检测中...";
-  elements.probeResult.classList.remove("error");
-
-  const response = await fetch(`/api/probe?device_ip=${encodeURIComponent(ip)}`);
-  const data = await response.json();
-  if (!response.ok || !data.ok) {
-    elements.probeResult.textContent = `设备不可用：${data.error || "unknown error"}`;
-    elements.probeResult.classList.add("error");
-    return;
+  renderSessions();
+  if (state.activeSessionId) {
+    await loadSessionDetail(state.activeSessionId);
+  } else {
+    elements.activeSessionLabel.textContent = "未选择";
+    renderEvidence([]);
+    renderAnalyses([]);
   }
-
-  elements.probeResult.textContent = `设备在线，抓拍大小 ${data.bytes} bytes。`;
 }
 
-async function analyzeCurrentFrame() {
-  const ip = normalizeIp(elements.deviceIp.value);
-  const prompt = elements.promptInput.value.trim();
-
-  if (!ip) {
-    addMessage("system", "请先输入设备 IP。");
-    return;
+async function loadSessionDetail(sessionId) {
+  const data = await apiGet(`/api/sessions/${sessionId}`);
+  const index = state.sessions.findIndex((item) => item.id === data.id);
+  if (index >= 0) {
+    state.sessions[index] = { ...state.sessions[index], ...data };
   }
-  if (!prompt) {
-    addMessage("system", "请先输入要问 AI 的问题。");
-    return;
-  }
+  elements.activeSessionLabel.textContent = data.title;
+  elements.sessionTitle.value = data.title || "";
+  elements.sessionCustomer.value = data.customerName || "";
+  elements.deviceIp.value = data.deviceIp || "";
+  renderSessions();
+  renderEvidence(data.evidence || []);
+  renderAnalyses(data.analyses || []);
+}
 
-  elements.currentQuestion.textContent = prompt;
-  addMessage("user", prompt);
-  elements.promptInput.value = "";
-  elements.analyzeBtn.disabled = true;
-  let imageDataUrl = "";
-  resetWorkflow();
-
-  try {
-    imageDataUrl = capturePreviewFrameDataUrl();
-    addMessage("system", "已从当前视频预览提取画面，正在发送给 AI 分析...");
-    updateWorkflow("frame", "success", "已从当前视频预览提取一帧 JPEG 数据。");
-    updateWorkflow("encoding", "success", `浏览器已编码 JPEG Data URL，长度 ${imageDataUrl.length}。`);
-  } catch (error) {
-    addMessage("system", `无法直接从视频预览提取画面：${error.message}。将回退到设备 /capture 抓拍。`);
-    updateWorkflow("frame", "error", `无法从当前视频预览提取图像：${error.message}。将回退到设备 /capture。`);
-    updateWorkflow("encoding", "pending", "等待后端回退到设备 /capture 抓拍。");
-  }
-
-  if (!state.apiConfigured) {
-    updateWorkflow("providerCheck", "error", "未保存 API Key 或 AI 设置。");
-    updateWorkflow("request", "pending", "未开始。");
-    updateWorkflow("response", "pending", "未开始。");
-    elements.analyzeBtn.disabled = false;
-    window.alert("请先填写并保存 AI 设置，尤其是 API Key。");
-    return;
-  }
-
-  updateWorkflow("providerCheck", "running", "正在检查当前 AI 提供方配置...");
-  updateWorkflow("request", "running", "准备发送请求...");
-
-  const response = await fetch("/api/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      deviceIp: ip,
-      prompt,
-      imageDataUrl,
-      history: state.history.filter((item) => item.role !== "system").slice(-10),
-    }),
+async function createSession() {
+  const data = await apiPost("/api/sessions", {
+    title: elements.sessionTitle.value.trim(),
+    customerName: elements.sessionCustomer.value.trim(),
+    deviceIp: elements.deviceIp.value.trim(),
   });
-  const data = await response.json();
-  elements.analyzeBtn.disabled = false;
-
-  if (!response.ok) {
-    const errorText = data.error || "unknown error";
-    if (errorText.includes("不支持图像分析")) {
-      updateWorkflow("providerCheck", "error", errorText);
-      updateWorkflow("request", "error", "已在本地拦截，未向视觉接口发起有效图像分析。");
-      updateWorkflow("response", "pending", "未进入返回解析阶段。");
-    } else if (errorText.includes("image was not received") || errorText.includes("image was not understood")) {
-      updateWorkflow("providerCheck", "success", "AI 配置存在且请求已发出。");
-      updateWorkflow("request", "success", "请求已发送到 AI 提供方。");
-      updateWorkflow("response", "error", "AI 返回了文本，但明确表示没有收到或无法识别图片。请查看日志中的 payloadPreview、containsImageMarker、imageBase64Length 和 responsePreview。");
-    } else if (errorText.includes("Snapshot") || errorText.includes("/capture")) {
-      updateWorkflow("encoding", "error", "前端没有可用帧，且后端 /capture 抓拍失败。");
-      updateWorkflow("request", "error", errorText);
-      updateWorkflow("response", "pending", "抓图阶段失败，未进入返回解析阶段。");
-    } else if (errorText.includes("Provider API error") || errorText.includes("Provider request failed") || errorText.includes("timed out")) {
-      updateWorkflow("providerCheck", "success", "AI 配置存在且已进入请求阶段。");
-      updateWorkflow("request", "error", errorText);
-      updateWorkflow("response", "pending", "AI 提供方未返回可解析结果。");
-    } else {
-      updateWorkflow("request", "error", errorText);
-      updateWorkflow("response", "pending", "请求异常终止。");
-    }
-    const requestId = data.requestId ? `，请求ID：${data.requestId}` : "";
-    addMessage("system", `分析失败：${errorText}${requestId}。请打开日志页面查看抓拍、AI 请求和返回详情。`);
-    return;
-  }
-
-  updateWorkflow("providerCheck", "success", "AI 配置通过，图像分析请求已发送。");
-  updateWorkflow("request", "success", `请求已完成，请求ID：${data.requestId || "-"}`);
-  updateWorkflow("response", "success", "已成功解析 AI 返回并显示。");
-  addMessage("assistant", data.answer);
+  state.activeSessionId = data.session.id;
+  await loadSessions();
 }
 
 async function saveProviderConfig() {
   elements.saveProviderBtn.disabled = true;
   elements.providerSaveResult.textContent = "保存中...";
-  elements.providerSaveResult.classList.remove("error");
-
-  const response = await fetch("/api/provider", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  try {
+    const data = await apiPost("/api/provider", {
       providerName: elements.providerName.value.trim(),
       apiBaseUrl: elements.apiBaseUrl.value.trim(),
       apiKey: elements.apiKey.value.trim(),
       model: elements.providerModelInput.value.trim(),
-    }),
-  });
-  const data = await response.json();
-  elements.saveProviderBtn.disabled = false;
-
-  if (!response.ok) {
-    elements.providerSaveResult.textContent = `保存失败：${data.error || "unknown error"}`;
+    });
+    const validation = data.validation || {};
+    state.apiConfigured = !!data.apiConfigured;
+    elements.providerModel.textContent = data.model || "-";
+    elements.providerStatus.textContent = state.apiConfigured
+      ? `${data.providerName || "Provider"} 已配置`
+      : `${data.providerName || "Provider"} 未配置 API Key`;
+    elements.providerStatus.classList.toggle("error", !state.apiConfigured);
+    elements.apiKey.value = "";
+    elements.apiKeyStatus.textContent = data.apiKeySaved ? "API Key 已保存，页面不显示具体值。" : "未保存 API Key";
+    elements.providerSaveResult.textContent = `${data.providerName} 设置已保存。${validation.message || ""}`;
+  } catch (error) {
+    elements.providerSaveResult.textContent = `保存失败：${error.message}`;
     elements.providerSaveResult.classList.add("error");
-    return;
-  }
-
-  elements.providerSaveResult.textContent = `${data.providerName} 设置已保存。`;
-  elements.providerModel.textContent = data.model || "-";
-  state.apiConfigured = !!data.apiConfigured;
-  elements.providerStatus.textContent = data.apiConfigured
-    ? `${data.providerName || "Provider"} 已配置`
-    : `${data.providerName || "Provider"} 未配置 API Key`;
-  elements.providerStatus.classList.toggle("error", !data.apiConfigured);
-  elements.apiKey.value = "";
-  elements.apiKeyStatus.textContent = data.apiKeySaved ? "API Key 已保存，页面不显示具体值。" : "未保存 API Key";
-  if (data.validation) {
-    const validation = data.validation;
-    const status = validation.ok ? "验证成功" : "验证失败";
-    const visionLine = validation.visionSupported
-      ? "支持图像分析。"
-      : `不支持图像分析：${validation.visionReason || "当前配置不可用"}`;
-    const effectiveLine = validation.effectiveApiBaseUrl || validation.effectiveModel
-      ? ` 实际调用：${validation.effectiveApiBaseUrl || data.apiBaseUrl} ，Model：${validation.effectiveModel || data.model}。`
-      : "";
-    elements.providerSaveResult.textContent = `${data.providerName} 设置已保存，${status}。${validation.message} ${visionLine}${effectiveLine}`;
+  } finally {
+    elements.saveProviderBtn.disabled = false;
   }
 }
 
-elements.connectBtn.addEventListener("click", refreshCameraLinks);
-elements.refreshStream.addEventListener("click", refreshCameraLinks);
-elements.probeBtn.addEventListener("click", probeDevice);
-elements.analyzeBtn.addEventListener("click", analyzeCurrentFrame);
-elements.clearChat.addEventListener("click", resetChat);
-elements.deviceIp.addEventListener("change", refreshCameraLinks);
-elements.saveProviderBtn.addEventListener("click", saveProviderConfig);
+async function uploadMaterial() {
+  requireSession();
+  const file = elements.materialFile.files[0];
+  if (!file) {
+    window.alert("请选择要上传的资料文件。");
+    return;
+  }
 
-resetChat();
-refreshCameraLinks();
-loadConfig().catch((error) => {
-  elements.providerStatus.textContent = `配置读取失败: ${error.message}`;
-  elements.providerStatus.classList.add("error");
-});
+  const formData = new FormData();
+  formData.append("sessionId", state.activeSessionId);
+  formData.append("title", elements.materialTitle.value.trim());
+  formData.append("file", file);
+
+  elements.uploadMaterialBtn.disabled = true;
+  elements.materialResult.textContent = "上传中...";
+  try {
+    const response = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "upload failed");
+    elements.materialResult.textContent = `资料已导入：${data.evidence.title}`;
+    elements.materialTitle.value = "";
+    elements.materialFile.value = "";
+    await loadSessionDetail(state.activeSessionId);
+  } finally {
+    elements.uploadMaterialBtn.disabled = false;
+  }
+}
+
+async function saveLog() {
+  requireSession();
+  const content = elements.logContent.value.trim();
+  if (!content) {
+    window.alert("请先粘贴串口日志。");
+    return;
+  }
+  await apiPost(`/api/sessions/${state.activeSessionId}/logs`, {
+    title: elements.logTitle.value.trim(),
+    content,
+  });
+  elements.logTitle.value = "";
+  elements.logContent.value = "";
+  await loadSessionDetail(state.activeSessionId);
+}
+
+async function saveNote() {
+  requireSession();
+  const content = elements.noteContent.value.trim();
+  if (!content) {
+    window.alert("请先填写人工备注。");
+    return;
+  }
+  await apiPost(`/api/sessions/${state.activeSessionId}/notes`, {
+    title: elements.noteTitle.value.trim(),
+    content,
+  });
+  elements.noteTitle.value = "";
+  elements.noteContent.value = "";
+  await loadSessionDetail(state.activeSessionId);
+}
+
+async function captureSnapshot() {
+  requireSession();
+  const deviceIp = elements.deviceIp.value.trim();
+  if (!deviceIp) {
+    window.alert("请先填写设备 IP。");
+    return;
+  }
+  elements.snapshotResult.textContent = "抓拍中...";
+  const data = await apiPost(`/api/sessions/${state.activeSessionId}/snapshot`, { deviceIp });
+  elements.snapshotResult.textContent = `抓拍已保存：${data.evidence.title}`;
+  await loadSessionDetail(state.activeSessionId);
+}
+
+async function runAnalysis() {
+  requireSession();
+  if (!state.apiConfigured) {
+    window.alert("请先保存可用的 AI 设置。");
+    return;
+  }
+
+  resetWorkflow();
+  updateWorkflow("session", "running", "正在读取当前会话、资料、日志和备注...");
+  updateWorkflow("provider", "running", "准备使用当前 AI 配置...");
+  updateWorkflow("request", "pending", "等待提交");
+  updateWorkflow("response", "pending", "等待返回");
+
+  const captureSnapshot = elements.captureBeforeAnalyze.checked;
+  const deviceIp = elements.deviceIp.value.trim();
+  updateWorkflow("session", "success", `已选中会话 ${state.activeSessionId}。`);
+  updateWorkflow("snapshot", captureSnapshot ? "running" : "success", captureSnapshot ? "分析前将补充一张设备抓拍。" : "本轮不补充抓拍。");
+
+  elements.analyzeBtn.disabled = true;
+  try {
+    const data = await apiPost(`/api/sessions/${state.activeSessionId}/analyze`, {
+      requestText: elements.analysisRequest.value.trim(),
+      deviceIp,
+      captureSnapshot,
+    });
+    updateWorkflow("snapshot", "success", captureSnapshot ? "抓拍成功并已入库。" : "未启用抓拍。");
+    updateWorkflow("provider", "success", "AI 配置可用。");
+    updateWorkflow("request", "success", `请求已发送，请求ID：${data.requestId}`);
+    updateWorkflow("response", "success", "结构化 JSON 结果已解析并入库。");
+    await loadSessionDetail(state.activeSessionId);
+  } catch (error) {
+    const message = error.message || "分析失败";
+    if (message.includes("Snapshot")) {
+      updateWorkflow("snapshot", "error", message);
+      updateWorkflow("request", "pending", "因抓拍失败未继续。");
+    } else if (message.includes("Provider") || message.includes("timed out")) {
+      updateWorkflow("provider", "success", "配置已通过，本轮失败点在 AI 请求阶段。");
+      updateWorkflow("request", "error", message);
+    } else if (message.includes("JSON")) {
+      updateWorkflow("provider", "success", "请求已返回。");
+      updateWorkflow("request", "success", "AI 已返回文本。");
+      updateWorkflow("response", "error", message);
+    } else {
+      updateWorkflow("request", "error", message);
+    }
+    window.alert(message);
+  } finally {
+    elements.analyzeBtn.disabled = false;
+  }
+}
+
+elements.saveProviderBtn.addEventListener("click", () => saveProviderConfig().catch(showGenericError));
+elements.createSessionBtn.addEventListener("click", () => createSession().catch(showGenericError));
+elements.uploadMaterialBtn.addEventListener("click", () => uploadMaterial().catch(showGenericError));
+elements.saveLogBtn.addEventListener("click", () => saveLog().catch(showGenericError));
+elements.saveNoteBtn.addEventListener("click", () => saveNote().catch(showGenericError));
+elements.captureSnapshotBtn.addEventListener("click", () => captureSnapshot().catch(showGenericError));
+elements.analyzeBtn.addEventListener("click", () => runAnalysis().catch(showGenericError));
+
+resetWorkflow();
+Promise.all([loadConfig(), loadSessions()]).catch(showGenericError);

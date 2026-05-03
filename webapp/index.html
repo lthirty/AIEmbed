@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ESP32-CAM AI Viewer</title>
+  <title>ESP32 原型机调试工作台</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <main class="app-shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">ESP32-CAM · AI Viewer</p>
-        <h1>输入设备 IP，直接看实时视频，并结合当前画面与 AI 讨论</h1>
-        <p class="subtext">中间区域直接显示摄像头实时视频。右侧每次提问都会抓取当前画面的一帧，连同你的问题一起发给 AI 分析。</p>
+        <p class="eyebrow">ESP32 Prototype Workbench</p>
+        <h1>客户资料导入、调试信息收集、日志沉淀与 AI 自动分析</h1>
+        <p class="subtext">ESP32-CAM 在这里是原型机信息采集节点，不是主角。主流程围绕会话、资料、日志、备注和结构化分析结果展开。</p>
       </div>
       <div class="hero-card">
         <div class="status-row">
@@ -23,15 +23,19 @@
           <span>Model</span>
           <strong id="provider-model">-</strong>
         </div>
+        <div class="status-row">
+          <span>当前会话</span>
+          <strong id="active-session-label">未选择</strong>
+        </div>
       </div>
     </section>
 
-    <section class="workspace">
-      <section class="panel controls-panel">
-        <h2>AI 提供方</h2>
+    <section class="workspace wide-layout">
+      <section class="panel sidebar-panel">
+        <h2>AI 设置</h2>
         <label>
           提供方名称
-          <input id="provider-name" type="text" placeholder="例如 MiniMax Token Plan / OpenAI / OpenRouter">
+          <input id="provider-name" type="text" placeholder="例如 MiniMax Token Plan / OpenAI">
         </label>
         <label>
           API Base URL
@@ -49,61 +53,123 @@
         <div class="inline-actions">
           <button id="save-provider-btn" type="button">保存 AI 设置</button>
         </div>
-        <p id="provider-save-result" class="helper">默认已适配 MiniMax 图像分析，也支持其他兼容接口。</p>
+        <p id="provider-save-result" class="helper">用于自动分析资料、日志和人工备注。</p>
 
         <hr class="panel-divider">
-        <h2>设备连接</h2>
+        <h2>会话</h2>
+        <label>
+          会话标题
+          <input id="session-title" type="text" placeholder="例如 客户A 首轮联调">
+        </label>
+        <label>
+          客户名称
+          <input id="session-customer" type="text" placeholder="例如 客户A">
+        </label>
         <label>
           设备 IP
-          <div class="inline-inputs">
-            <input id="device-ip" type="text" value="192.168.2.116" placeholder="例如 192.168.2.116">
-            <button id="connect-btn" type="button">连接设备</button>
-          </div>
+          <input id="device-ip" type="text" placeholder="例如 192.168.2.116">
         </label>
-        <p class="helper">这里输入纯 IP 即可，不要带 `http://`。页面中部会直接显示视频流。</p>
-
-        <div class="quick-links">
-          <a id="open-home" href="#" target="_blank" rel="noopener">打开设备首页</a>
-          <a id="open-stream" href="#" target="_blank" rel="noopener">打开视频流地址</a>
-          <a id="open-capture" href="#" target="_blank" rel="noopener">打开抓拍地址</a>
-          <a href="./logs.html" target="_blank" rel="noopener">打开日志页面</a>
+        <div class="inline-actions">
+          <button id="create-session-btn" type="button">创建新会话</button>
         </div>
-
-        <div class="probe-box">
-          <button id="probe-btn" type="button">检测设备是否在线</button>
-          <p id="probe-result" class="helper">尚未检测</p>
-        </div>
+        <div id="sessions-list" class="sessions-list"></div>
       </section>
 
-      <section class="panel video-panel">
+      <section class="panel content-panel">
         <div class="panel-head">
-          <h2>实时视频画面</h2>
-          <button id="refresh-stream" type="button">刷新视频流</button>
+          <h2>信息收集</h2>
+          <a href="./logs.html" target="_blank" rel="noopener" class="secondary-link">打开运行日志</a>
         </div>
-        <img id="stream-frame" alt="ESP32-CAM stream" crossorigin="anonymous">
+
+        <section class="collector-grid">
+          <article class="collector-card">
+            <h3>客户资料导入</h3>
+            <label>
+              标题
+              <input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述">
+            </label>
+            <label>
+              文件
+              <input id="material-file" type="file">
+            </label>
+            <button id="upload-material-btn" type="button">上传资料</button>
+            <p id="material-result" class="helper">支持 txt / md / log / json / csv / yaml / pdf 文本抽取。</p>
+          </article>
+
+          <article class="collector-card">
+            <h3>串口日志导入</h3>
+            <label>
+              标题
+              <input id="log-title" type="text" placeholder="例如 上电日志 / 异常复现日志">
+            </label>
+            <label>
+              日志内容
+              <textarea id="log-content" rows="8" placeholder="把串口日志贴到这里"></textarea>
+            </label>
+            <button id="save-log-btn" type="button">保存日志</button>
+          </article>
+
+          <article class="collector-card">
+            <h3>人工备注</h3>
+            <label>
+              标题
+              <input id="note-title" type="text" placeholder="例如 客户现场观察">
+            </label>
+            <label>
+              备注内容
+              <textarea id="note-content" rows="8" placeholder="记录环境、复现步骤、异常现象"></textarea>
+            </label>
+            <button id="save-note-btn" type="button">保存备注</button>
+          </article>
+
+          <article class="collector-card">
+            <h3>设备抓拍</h3>
+            <p class="helper">仅作为辅助证据。必要时从 ESP32-CAM 的 `/capture` 抓一张当前画面。</p>
+            <button id="capture-snapshot-btn" type="button">抓拍并保存到会话</button>
+            <p id="snapshot-result" class="helper">需要先填写当前会话的设备 IP。</p>
+          </article>
+        </section>
+
+        <section class="panel-section">
+          <div class="panel-head">
+            <h2>当前会话证据</h2>
+            <span id="evidence-count" class="helper">0 条</span>
+          </div>
+          <div id="evidence-list" class="evidence-list"></div>
+        </section>
       </section>
 
-      <section class="panel chat-panel">
+      <section class="panel analysis-panel">
         <div class="panel-head">
-          <h2>AI 图像分析</h2>
-          <button id="clear-chat" type="button">清空对话</button>
+          <h2>AI 自动分析</h2>
+          <button id="analyze-btn" type="button">开始分析</button>
         </div>
         <label>
-          输入问题
-          <textarea id="prompt-input" rows="4" placeholder="例如：画面里有什么？有没有人？有没有二维码？当前亮度是否异常？"></textarea>
+          本轮分析目标
+          <textarea id="analysis-request" rows="5" placeholder="例如：根据客户资料、日志和当前备注，分析最可能原因，并给出下一步验证步骤。"></textarea>
         </label>
-        <div class="chat-actions">
-          <button id="analyze-btn" type="button">分析当前画面</button>
-        </div>
+        <label class="checkbox-row">
+          <input id="capture-before-analyze" type="checkbox">
+          <span>分析前自动从 ESP32-CAM 抓拍一张证据图</span>
+        </label>
+
         <section class="steps-box">
-          <span class="role">AI WORKFLOW</span>
+          <span class="role">ANALYSIS WORKFLOW</span>
           <div id="workflow-steps" class="workflow-steps"></div>
         </section>
-        <section class="current-question-box">
-          <span class="role">CURRENT QUESTION</span>
-          <div id="current-question" class="current-question">尚未提问</div>
+
+        <section class="analysis-result-box">
+          <span class="role">LATEST STRUCTURED RESULT</span>
+          <pre id="analysis-result" class="analysis-pre">尚未分析</pre>
         </section>
-        <div id="messages" class="messages"></div>
+
+        <section class="panel-section">
+          <div class="panel-head">
+            <h2>历史分析</h2>
+            <span id="analysis-count" class="helper">0 条</span>
+          </div>
+          <div id="analysis-history" class="messages"></div>
+        </section>
       </section>
     </section>
   </main>
