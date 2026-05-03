@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>ESP32 原型机调试工作台</title>
+  <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -11,8 +12,9 @@
     <section class="hero">
       <div>
         <p class="eyebrow">ESP32 Prototype Workbench</p>
-        <h1>客户资料导入、调试信息收集、日志沉淀与 AI 自动分析</h1>
-        <p class="subtext">ESP32-CAM 在这里是原型机信息采集节点，不是主角。主流程围绕会话、资料、日志、备注和结构化分析结果展开。</p>
+        <h1>资料导入、调试信息收集、串口抓取与 AI 自动分析</h1>
+        <p class="subtext">ESP32-CAM 在这里是原型机信息采集节点，不是主角。主流程围绕会话、资料、串口日志、备注和结构化分析结果展开。</p>
+        <p class="version-line">UI 版本：<strong id="app-version">-</strong></p>
       </div>
       <div class="hero-card">
         <div class="status-row">
@@ -27,63 +29,96 @@
           <span>当前会话</span>
           <strong id="active-session-label">未选择</strong>
         </div>
+        <div class="status-row">
+          <span>工作台版本</span>
+          <strong id="hero-app-version">-</strong>
+        </div>
       </div>
     </section>
 
-    <section class="workspace wide-layout">
-      <section class="panel sidebar-panel">
-        <h2>AI 设置</h2>
-        <label>
-          提供方名称
-          <input id="provider-name" type="text" placeholder="例如 MiniMax Token Plan / OpenAI">
-        </label>
-        <label>
-          API Base URL
-          <input id="api-base-url" type="text" placeholder="例如 https://api.minimaxi.com/v1/chat/completions">
-        </label>
-        <label>
-          API Key
-          <input id="api-key" type="password" placeholder="输入你的 API Key">
-        </label>
-        <p id="api-key-status" class="helper">未保存 API Key</p>
-        <label>
-          Model
-          <input id="provider-model-input" type="text" placeholder="例如 MiniMax-M2.7">
-        </label>
-        <div class="inline-actions">
-          <button id="save-provider-btn" type="button">保存 AI 设置</button>
-        </div>
-        <p id="provider-save-result" class="helper">用于自动分析资料、日志和人工备注。</p>
-
-        <hr class="panel-divider">
-        <h2>会话</h2>
-        <label>
-          会话标题
-          <input id="session-title" type="text" placeholder="例如 客户A 首轮联调">
-        </label>
-        <label>
-          客户名称
-          <input id="session-customer" type="text" placeholder="例如 客户A">
-        </label>
-        <label>
-          设备 IP
-          <input id="device-ip" type="text" placeholder="例如 192.168.2.116">
-        </label>
-        <div class="inline-actions">
-          <button id="create-session-btn" type="button">创建新会话</button>
-        </div>
-        <div id="sessions-list" class="sessions-list"></div>
+    <section class="workspace">
+      <section class="panel ai-panel">
+        <details id="ai-settings-panel" open>
+          <summary class="summary-head">
+            <span>AI 设置</span>
+            <span id="ai-validation-badge" class="validation-badge pending">待验证</span>
+          </summary>
+          <div class="details-body">
+            <label>
+              提供方名称
+              <input id="provider-name" type="text" placeholder="例如 MiniMax Token Plan / OpenAI">
+            </label>
+            <label>
+              API Base URL
+              <input id="api-base-url" type="text" placeholder="例如 https://api.minimaxi.com/v1/chat/completions">
+            </label>
+            <label>
+              API Key
+              <input id="api-key" type="password" placeholder="输入你的 API Key">
+            </label>
+            <p id="api-key-status" class="helper">未保存 API Key</p>
+            <label>
+              Model
+              <input id="provider-model-input" type="text" placeholder="例如 MiniMax-M2.7">
+            </label>
+            <div class="inline-actions">
+              <button id="save-provider-btn" type="button">保存 AI 设置</button>
+            </div>
+            <p id="provider-save-result" class="helper">用于自动分析资料、串口日志和导入信息。</p>
+          </div>
+        </details>
       </section>
 
-      <section class="panel content-panel">
-        <div class="panel-head">
-          <h2>信息收集</h2>
-          <a href="./logs.html" target="_blank" rel="noopener" class="secondary-link">打开运行日志</a>
-        </div>
+      <section class="panel session-panel">
+        <details open>
+          <summary class="summary-head">
+            <span>会话</span>
+            <span class="summary-helper">创建、切换和编辑会话</span>
+          </summary>
+          <div class="details-body">
+            <div class="session-grid">
+              <label>
+                会话标题
+                <input id="session-title" type="text" placeholder="例如 客户A 首轮联调">
+              </label>
+              <label>
+                客户名称
+                <input id="session-customer" type="text" placeholder="例如 客户A">
+              </label>
+              <label>
+                设备型号
+                <input id="device-model" type="text" placeholder="例如 ESP32-CAM / S3-Proto-A">
+              </label>
+              <label>
+                序号
+                <input id="serial-number" type="text" placeholder="例如 SN-2026-0001">
+              </label>
+            </div>
+            <div class="inline-actions">
+              <button id="create-session-btn" type="button">创建新会话</button>
+              <button id="save-session-meta-btn" type="button">保存当前会话信息</button>
+              <button id="delete-session-btn" type="button">删除当前会话</button>
+            </div>
+            <details id="history-sessions-panel">
+              <summary class="subsummary-head">
+                <span>历史会话</span>
+                <span class="summary-helper">默认收起，可切换、编辑、删除</span>
+              </summary>
+              <div class="subdetails-body">
+                <div id="sessions-list" class="sessions-list"></div>
+              </div>
+            </details>
+          </div>
+        </details>
+      </section>
 
-        <section class="collector-grid">
-          <article class="collector-card">
-            <h3>客户资料导入</h3>
+      <section class="panel material-panel">
+        <details open>
+          <summary class="summary-head">
+            <span>资料导入</span>
+            <span class="summary-helper">单独资料栏，优先导入客户文档</span>
+          </summary>
+          <div class="details-body">
             <label>
               标题
               <input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述">
@@ -94,82 +129,195 @@
             </label>
             <button id="upload-material-btn" type="button">上传资料</button>
             <p id="material-result" class="helper">支持 txt / md / log / json / csv / yaml / pdf 文本抽取。</p>
-          </article>
-
-          <article class="collector-card">
-            <h3>串口日志导入</h3>
-            <label>
-              标题
-              <input id="log-title" type="text" placeholder="例如 上电日志 / 异常复现日志">
-            </label>
-            <label>
-              日志内容
-              <textarea id="log-content" rows="8" placeholder="把串口日志贴到这里"></textarea>
-            </label>
-            <button id="save-log-btn" type="button">保存日志</button>
-          </article>
-
-          <article class="collector-card">
-            <h3>人工备注</h3>
-            <label>
-              标题
-              <input id="note-title" type="text" placeholder="例如 客户现场观察">
-            </label>
-            <label>
-              备注内容
-              <textarea id="note-content" rows="8" placeholder="记录环境、复现步骤、异常现象"></textarea>
-            </label>
-            <button id="save-note-btn" type="button">保存备注</button>
-          </article>
-
-          <article class="collector-card">
-            <h3>设备抓拍</h3>
-            <p class="helper">仅作为辅助证据。必要时从 ESP32-CAM 的 `/capture` 抓一张当前画面。</p>
-            <button id="capture-snapshot-btn" type="button">抓拍并保存到会话</button>
-            <p id="snapshot-result" class="helper">需要先填写当前会话的设备 IP。</p>
-          </article>
-        </section>
-
-        <section class="panel-section">
-          <div class="panel-head">
-            <h2>当前会话证据</h2>
-            <span id="evidence-count" class="helper">0 条</span>
           </div>
-          <div id="evidence-list" class="evidence-list"></div>
-        </section>
+        </details>
+      </section>
+
+      <section class="panel content-panel">
+        <details open>
+          <summary class="summary-head">
+            <span>信息收集</span>
+            <span class="summary-helper">串口、备注和现场辅助信息</span>
+          </summary>
+          <div class="details-body collector-stack">
+
+            <article class="collector-card">
+              <details>
+                <summary class="subsummary-head"><span>串口信息收集</span><span class="summary-helper">默认收起</span></summary>
+                <div class="subdetails-body serial-stack">
+                  <section class="serial-subsection">
+                    <details open>
+                      <summary class="subsummary-head small"><span>自动串口抓取</span></summary>
+                      <div class="subdetails-body">
+                        <label>
+                          串口端口
+                          <div class="inline-actions split">
+                            <select id="serial-port-select"></select>
+                            <button id="refresh-serial-ports-btn" type="button">刷新端口</button>
+                          </div>
+                        </label>
+                        <label>
+                          波特率
+                          <input id="serial-baud" type="number" value="115200" min="1200" step="1">
+                        </label>
+                        <div class="inline-actions">
+                          <button id="start-serial-capture-btn" type="button">开始自动抓取</button>
+                          <button id="stop-serial-capture-btn" type="button">停止抓取</button>
+                        </div>
+                        <p id="serial-capture-status" class="helper">未启动串口自动抓取。</p>
+                        <label>
+                          最新的打印信息
+                          <textarea id="latest-serial-output" rows="10" class="serial-live-output" readonly placeholder="开始抓取后，这里显示最新串口输出。"></textarea>
+                        </label>
+                      </div>
+                    </details>
+                  </section>
+
+                  <section class="serial-subsection">
+                    <details>
+                      <summary class="subsummary-head small"><span>手工粘贴串口日志</span></summary>
+                      <div class="subdetails-body">
+                        <label>
+                          标题
+                          <input id="log-title" type="text" placeholder="例如 上电日志 / 异常复现日志">
+                        </label>
+                        <label>
+                          日志内容
+                          <textarea id="log-content" rows="8" placeholder="把串口日志贴到这里"></textarea>
+                        </label>
+                        <button id="save-log-btn" type="button">保存日志</button>
+                      </div>
+                    </details>
+                  </section>
+
+                  <section class="serial-subsection">
+                    <details>
+                      <summary class="subsummary-head small"><span>导入串口文件</span></summary>
+                      <div class="subdetails-body">
+                        <label>
+                          标题
+                          <input id="log-file-title" type="text" placeholder="例如 客户导出的完整串口日志">
+                        </label>
+                        <label>
+                          日志文件
+                          <input id="log-file-input" type="file" accept=".log,.txt,.csv,.json,.md">
+                        </label>
+                        <button id="upload-log-file-btn" type="button">导入串口文件</button>
+                        <p id="log-file-result" class="helper">适合导入客户发来的串口文本文件。</p>
+                      </div>
+                    </details>
+                  </section>
+                </div>
+              </details>
+            </article>
+
+            <article class="collector-card">
+              <details>
+                <summary class="subsummary-head"><span>导入信息</span><span class="summary-helper">录入文字并可附带图片或文档</span></summary>
+                <div class="subdetails-body">
+                  <label>
+                    标题
+                    <input id="info-title" type="text" placeholder="例如 客户现场观察 / 异常截图 / 现场说明">
+                  </label>
+                  <label>
+                    信息内容
+                    <textarea id="info-content" rows="8" placeholder="记录环境、复现步骤、异常现象，或补充上传附件的说明"></textarea>
+                  </label>
+                  <label>
+                    附件
+                    <input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml">
+                  </label>
+                  <div class="inline-actions">
+                    <button id="save-info-btn" type="button">导入信息</button>
+                  </div>
+                  <p id="info-result" class="helper">可只填文字，也可附带图片或文档。AI 会综合信息收集栏里的信息一起分析。</p>
+                </div>
+              </details>
+            </article>
+
+            <article class="collector-card">
+              <details>
+                <summary class="subsummary-head"><span>设备抓拍</span><span class="summary-helper">默认收起</span></summary>
+                <div class="subdetails-body">
+                  <label>
+                    设备 IP
+                    <input id="device-ip" type="text" placeholder="例如 192.168.2.116">
+                  </label>
+                  <p class="helper">仅作为辅助证据。必要时从 ESP32-CAM 的 `/capture` 抓一张当前画面。</p>
+                  <button id="capture-snapshot-btn" type="button">抓拍并保存到会话</button>
+                  <p id="snapshot-result" class="helper">未抓拍。</p>
+                </div>
+              </details>
+            </article>
+          </div>
+        </details>
       </section>
 
       <section class="panel analysis-panel">
-        <div class="panel-head">
-          <h2>AI 自动分析</h2>
-          <button id="analyze-btn" type="button">开始分析</button>
-        </div>
-        <label>
-          本轮分析目标
-          <textarea id="analysis-request" rows="5" placeholder="例如：根据客户资料、日志和当前备注，分析最可能原因，并给出下一步验证步骤。"></textarea>
-        </label>
-        <label class="checkbox-row">
-          <input id="capture-before-analyze" type="checkbox">
-          <span>分析前自动从 ESP32-CAM 抓拍一张证据图</span>
-        </label>
+        <details open>
+          <summary class="summary-head">
+            <span>AI 自动分析</span>
+            <span class="summary-helper">读取证据并生成结构化结果</span>
+          </summary>
+          <div class="details-body">
+            <div class="panel-head">
+              <label class="wide-label">
+                本轮分析目标
+                <textarea id="analysis-request" rows="5" placeholder="例如：根据资料、日志和现场备注，分析最可能原因，并给出下一步验证步骤。"></textarea>
+              </label>
+              <div class="analyze-side">
+                <label class="checkbox-row">
+                  <input id="capture-before-analyze" type="checkbox">
+                  <span>分析前自动抓拍一张证据图</span>
+                </label>
+                <button id="analyze-btn" type="button">开始分析</button>
+              </div>
+            </div>
 
-        <section class="steps-box">
-          <span class="role">ANALYSIS WORKFLOW</span>
-          <div id="workflow-steps" class="workflow-steps"></div>
-        </section>
+            <section class="steps-box">
+              <span class="role">ANALYSIS WORKFLOW</span>
+              <div id="workflow-steps" class="workflow-steps workflow-inline"></div>
+            </section>
 
-        <section class="analysis-result-box">
-          <span class="role">LATEST STRUCTURED RESULT</span>
-          <pre id="analysis-result" class="analysis-pre">尚未分析</pre>
-        </section>
+            <section class="analysis-result-box">
+              <div class="panel-head">
+                <span class="role">分析结果</span>
+                <button id="save-analysis-summary-btn" type="button">保存分析摘要</button>
+              </div>
+              <div id="analysis-result" class="analysis-readable"></div>
+            </section>
 
-        <section class="panel-section">
-          <div class="panel-head">
-            <h2>历史分析</h2>
-            <span id="analysis-count" class="helper">0 条</span>
+            <section class="panel-section">
+              <div class="panel-head">
+                <h2>历史分析</h2>
+                <span id="analysis-count" class="helper">0 条</span>
+              </div>
+              <div class="analysis-compare-head">
+                <button id="compare-selected-btn" type="button">定位到表格中的选中分析</button>
+                <p class="helper">历史分析已按表格展示，方便横向比较。</p>
+              </div>
+              <div class="table-wrap">
+                <table class="analysis-table">
+                  <thead>
+                    <tr>
+                      <th>选择</th>
+                      <th>分析时间</th>
+                      <th>测试时间</th>
+                      <th>设备型号</th>
+                      <th>序号</th>
+                      <th>优先级</th>
+                      <th>风险等级</th>
+                      <th>现象总结</th>
+                      <th>分析目标</th>
+                    </tr>
+                  </thead>
+                  <tbody id="analysis-history"></tbody>
+                </table>
+              </div>
+              <div id="analysis-compare" class="analysis-compare"></div>
+            </section>
           </div>
-          <div id="analysis-history" class="messages"></div>
-        </section>
+        </details>
       </section>
     </section>
   </main>

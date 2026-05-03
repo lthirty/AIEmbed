@@ -2,6 +2,18 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.8.0 - 2026-05-03
+
+- Split `资料导入` into its own top-level panel above `信息收集` for clearer workflow separation.
+- Added visible UI version output and bumped the local workbench version to `v0.8.0`.
+- Replaced the old `人工备注` flow with a unified `导入信息` panel that supports free-text notes plus optional image/document attachments.
+- Added `/api/info-upload` so imported text, pictures, and documents are stored as one evidence type and can be analyzed together.
+- Updated the structured analysis prompt so AI now synthesizes material imports, serial logs, imported info, and attachment metadata together.
+- Added a live `最新的打印信息` preview area for the latest serial output inside the serial capture section.
+- Removed the standalone `当前会话证据` panel from the main UI to reduce duplication.
+- Moved `分析内容及结果.md` output to the project root and refresh it automatically whenever session info, logs, imported info, or analysis results change.
+- Added `server_stdout.log` and `server_stderr.log` to `.gitignore` as local debug artifacts.
+
 ## v0.6.0 - 2026-05-03
 
 - Repositioned the local web tool from camera-first chat to a session-centric prototype debugging workbench.

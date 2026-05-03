@@ -6,6 +6,7 @@ import re
 import socket
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -14,9 +15,13 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
 
+import serial  # type: ignore
+from serial.tools import list_ports  # type: ignore
+
 
 HOST = "127.0.0.1"
 PORT = 8000
+APP_VERSION = "v0.8.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -33,6 +38,19 @@ DEFAULT_PROVIDER_CONFIG = {
 MAX_LOG_ENTRIES = 300
 MAX_PROMPT_EVIDENCE_CHARS = 12000
 REQUEST_LOGS: list[dict] = []
+SERIAL_CAPTURE_STATE = {
+    "running": False,
+    "sessionId": "",
+    "evidenceId": "",
+    "port": "",
+    "baud": 115200,
+    "startedAt": "",
+    "lines": 0,
+    "bytes": 0,
+    "lastError": "",
+    "thread": None,
+    "stopEvent": None,
+}
 
 
 def now_ts() -> str:
@@ -65,6 +83,8 @@ def init_storage() -> None:
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 customer_name TEXT NOT NULL DEFAULT '',
+                device_model TEXT NOT NULL DEFAULT '',
+                serial_number TEXT NOT NULL DEFAULT '',
                 device_ip TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'open',
                 created_at TEXT NOT NULL,
@@ -95,6 +115,11 @@ def init_storage() -> None:
             );
             """
         )
+        existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+        if "device_model" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN device_model TEXT NOT NULL DEFAULT ''")
+        if "serial_number" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN serial_number TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -366,6 +391,8 @@ def session_to_dict(row: sqlite3.Row) -> dict:
         "id": row["id"],
         "title": row["title"],
         "customerName": row["customer_name"],
+        "deviceModel": row["device_model"],
+        "serialNumber": row["serial_number"],
         "deviceIp": row["device_ip"],
         "status": row["status"],
         "createdAt": row["created_at"],
@@ -398,18 +425,78 @@ def analysis_to_dict(row: sqlite3.Row) -> dict:
     }
 
 
-def create_session(title: str, customer_name: str, device_ip: str) -> dict:
+def create_session(title: str, customer_name: str, device_model: str, serial_number: str, device_ip: str = "") -> dict:
     session_id = uuid4().hex
     now = now_ts()
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO sessions (id, title, customer_name, device_ip, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'open', ?, ?)",
-            (session_id, title.strip() or "未命名会话", customer_name.strip(), device_ip.strip(), now, now),
+            "INSERT INTO sessions (id, title, customer_name, device_model, serial_number, device_ip, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)",
+            (session_id, title.strip() or "未命名会话", customer_name.strip(), device_model.strip(), serial_number.strip(), device_ip.strip(), now, now),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
-        return session_to_dict(row)
+        result = session_to_dict(row)
+    finally:
+        conn.close()
+    write_session_markdown(session_id)
+    return result
+
+
+def update_session(session_id: str, title: str, customer_name: str, device_model: str, serial_number: str, device_ip: str = "") -> dict:
+    conn = get_conn()
+    try:
+        exists = conn.execute("SELECT 1 FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not exists:
+            raise KeyError("session not found")
+        conn.execute(
+            """
+            UPDATE sessions
+            SET title = ?, customer_name = ?, device_model = ?, serial_number = ?, device_ip = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (title.strip() or "未命名会话", customer_name.strip(), device_model.strip(), serial_number.strip(), device_ip.strip(), now_ts(), session_id),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        result = session_to_dict(row)
+    finally:
+        conn.close()
+    write_session_markdown(session_id)
+    return result
+
+
+def delete_session(session_id: str) -> None:
+    conn = get_conn()
+    try:
+        session = conn.execute("SELECT 1 FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not session:
+            raise KeyError("session not found")
+        evidence_rows = conn.execute("SELECT file_path FROM evidence WHERE session_id = ?", (session_id,)).fetchall()
+        conn.execute("DELETE FROM analyses WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM evidence WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        conn.commit()
+        for row in evidence_rows:
+            file_path = (row["file_path"] or "").strip()
+            if file_path:
+                try:
+                    path = Path(file_path)
+                    if path.exists():
+                        path.unlink()
+                except Exception:
+                    pass
+        upload_dir = UPLOAD_DIR / session_id
+        if upload_dir.exists():
+            for child in upload_dir.iterdir():
+                try:
+                    child.unlink()
+                except Exception:
+                    pass
+            try:
+                upload_dir.rmdir()
+            except Exception:
+                pass
     finally:
         conn.close()
 
@@ -469,9 +556,29 @@ def add_evidence(
         touch_session(conn, session_id)
         conn.commit()
         row = conn.execute("SELECT * FROM evidence WHERE id = ?", (evidence_id,)).fetchone()
-        return evidence_to_dict(row)
+        result = evidence_to_dict(row)
     finally:
         conn.close()
+    write_session_markdown(session_id)
+    return result
+
+
+def append_evidence_content(evidence_id: str, chunk_text: str) -> None:
+    session_id = ""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT session_id, content_text FROM evidence WHERE id = ?", (evidence_id,)).fetchone()
+        if not row:
+            raise KeyError("evidence not found")
+        session_id = row["session_id"]
+        merged = (row["content_text"] or "") + chunk_text
+        conn.execute("UPDATE evidence SET content_text = ? WHERE id = ?", (merged, evidence_id))
+        touch_session(conn, session_id)
+        conn.commit()
+    finally:
+        conn.close()
+    if session_id:
+        write_session_markdown(session_id)
 
 
 def save_uploaded_file(session_id: str, file_name: str, content: bytes) -> tuple[str, str]:
@@ -481,6 +588,248 @@ def save_uploaded_file(session_id: str, file_name: str, content: bytes) -> tuple
     target_path = target_dir / f"{int(time.time())}-{safe_name}"
     target_path.write_bytes(content)
     return safe_name, str(target_path.resolve())
+
+
+def session_work_dir(session_id: str) -> Path:
+    path = UPLOAD_DIR / session_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def session_markdown_path(session_id: str) -> Path:
+    return ROOT_DIR / "分析内容及结果.md"
+
+
+def write_session_markdown(session_id: str) -> None:
+    session_payload = get_session(session_id)
+    lines: list[str] = []
+    lines.append(f"# {session_payload.get('title') or '未命名会话'}")
+    lines.append("")
+    lines.append("## 会话信息")
+    lines.append("")
+    lines.append(f"- 导出时间：{now_ts()}")
+    lines.append(f"- 客户名称：{session_payload.get('customerName') or ''}")
+    lines.append(f"- 设备型号：{session_payload.get('deviceModel') or ''}")
+    lines.append(f"- 序号：{session_payload.get('serialNumber') or ''}")
+    lines.append(f"- 设备 IP：{session_payload.get('deviceIp') or ''}")
+    lines.append(f"- 会话状态：{session_payload.get('status') or ''}")
+    lines.append("")
+
+    serial_logs = [item for item in session_payload.get("evidence", []) if item.get("kind") == "serial_log"]
+    imported_info = [
+        item for item in session_payload.get("evidence", [])
+        if item.get("kind") in {"imported_info", "material", "snapshot"}
+    ]
+    analyses = session_payload.get("analyses", [])
+
+    lines.append("## 导入信息")
+    lines.append("")
+    if not imported_info:
+        lines.append("暂无导入信息。")
+        lines.append("")
+    else:
+        for item in reversed(imported_info):
+            lines.append(f"### {item.get('title') or '未命名信息'}")
+            lines.append("")
+            lines.append(f"- 类型：{item.get('kind') or ''}")
+            lines.append(f"- 记录时间：{item.get('createdAt') or ''}")
+            if item.get("fileName"):
+                lines.append(f"- 附件：{item.get('fileName')}")
+            meta = item.get("meta") or {}
+            if meta.get("mediaCategory"):
+                lines.append(f"- 附件类别：{meta.get('mediaCategory')}")
+            if meta.get("extractNote"):
+                lines.append(f"- 抽取说明：{meta.get('extractNote')}")
+            lines.append("")
+            if item.get("contentText"):
+                lines.append("```text")
+                lines.append((item.get("contentText") or "").rstrip())
+                lines.append("```")
+                lines.append("")
+
+    lines.append("## Log")
+    lines.append("")
+    if not serial_logs:
+        lines.append("暂无串口日志。")
+        lines.append("")
+    else:
+        for item in reversed(serial_logs):
+            lines.append(f"### {item.get('title') or '未命名日志'}")
+            lines.append("")
+            lines.append(f"- 记录时间：{item.get('createdAt') or ''}")
+            meta = item.get("meta") or {}
+            if meta.get("port"):
+                lines.append(f"- 串口：{meta.get('port')} @ {meta.get('baud')}")
+            if item.get("fileName"):
+                lines.append(f"- 来源文件：{item.get('fileName')}")
+            lines.append("")
+            lines.append("```text")
+            lines.append((item.get("contentText") or "").rstrip())
+            lines.append("```")
+            lines.append("")
+
+    lines.append("## 分析结果")
+    lines.append("")
+    if not analyses:
+        lines.append("暂无分析结果。")
+        lines.append("")
+    else:
+        for item in reversed(analyses):
+            result = item.get("result") or {}
+            lines.append(f"### {item.get('createdAt') or ''}")
+            lines.append("")
+            lines.append(f"- 分析目标：{item.get('requestText') or ''}")
+            lines.append(f"- 测试时间：{result.get('test_time') or item.get('createdAt') or ''}")
+            lines.append(f"- 设备型号：{result.get('device_model') or ''}")
+            lines.append(f"- 序号：{result.get('serial_number') or ''}")
+            lines.append(f"- 优先级：{result.get('priority') or ''}")
+            lines.append(f"- 风险等级：{result.get('risk_level') or ''}")
+            lines.append("")
+            lines.append("#### 现象总结")
+            lines.append("")
+            lines.append(result.get("phenomenon_summary") or "无")
+            lines.append("")
+            lines.append("#### 结构化 JSON")
+            lines.append("")
+            lines.append("```json")
+            lines.append(json.dumps(result, ensure_ascii=False, indent=2))
+            lines.append("```")
+            lines.append("")
+            raw_text = (item.get("rawText") or "").strip()
+            if raw_text:
+                lines.append("#### 原始返回")
+                lines.append("")
+                lines.append("```text")
+                lines.append(raw_text)
+                lines.append("```")
+                lines.append("")
+
+    session_markdown_path(session_id).write_text("\n".join(lines), encoding="utf-8")
+
+
+def list_serial_port_dicts() -> list[dict]:
+    ports = []
+    for port in list_ports.comports():
+        ports.append(
+            {
+                "device": port.device,
+                "description": port.description,
+                "hwid": port.hwid,
+            }
+        )
+    return ports
+
+
+def serial_capture_loop(port_name: str, baud_rate: int, evidence_id: str, stop_event: threading.Event) -> None:
+    serial_obj = None
+    try:
+        serial_obj = serial.Serial(port=port_name, baudrate=baud_rate, timeout=1)
+        add_log("info", "serial", "Serial capture started", {"port": port_name, "baud": baud_rate}, "serial-capture")
+        buffer: list[str] = []
+        last_flush = time.time()
+        while not stop_event.is_set():
+            line = serial_obj.readline()
+            if not line:
+                if buffer and time.time() - last_flush > 1.0:
+                    chunk = "".join(buffer)
+                    append_evidence_content(evidence_id, chunk)
+                    SERIAL_CAPTURE_STATE["bytes"] += len(chunk.encode("utf-8", errors="replace"))
+                    buffer.clear()
+                    last_flush = time.time()
+                continue
+            decoded = line.decode("utf-8", errors="replace")
+            buffer.append(decoded)
+            SERIAL_CAPTURE_STATE["lines"] += 1
+            if len(buffer) >= 20 or time.time() - last_flush > 0.8:
+                chunk = "".join(buffer)
+                append_evidence_content(evidence_id, chunk)
+                SERIAL_CAPTURE_STATE["bytes"] += len(chunk.encode("utf-8", errors="replace"))
+                buffer.clear()
+                last_flush = time.time()
+        if buffer:
+            chunk = "".join(buffer)
+            append_evidence_content(evidence_id, chunk)
+            SERIAL_CAPTURE_STATE["bytes"] += len(chunk.encode("utf-8", errors="replace"))
+        add_log(
+            "info",
+            "serial",
+            "Serial capture stopped",
+            {"port": port_name, "baud": baud_rate, "lines": SERIAL_CAPTURE_STATE["lines"], "bytes": SERIAL_CAPTURE_STATE["bytes"]},
+            "serial-capture",
+        )
+    except Exception as exc:
+        SERIAL_CAPTURE_STATE["lastError"] = str(exc)
+        add_log("error", "serial", "Serial capture failed", {"port": port_name, "baud": baud_rate, "error": str(exc)}, "serial-capture")
+    finally:
+        if serial_obj is not None:
+            try:
+                serial_obj.close()
+            except Exception:
+                pass
+        SERIAL_CAPTURE_STATE["running"] = False
+        SERIAL_CAPTURE_STATE["thread"] = None
+        SERIAL_CAPTURE_STATE["stopEvent"] = None
+
+
+def start_serial_capture(session_id: str, port_name: str, baud_rate: int) -> dict:
+    if SERIAL_CAPTURE_STATE["running"]:
+        raise RuntimeError("已有串口采集任务在运行，请先停止当前采集。")
+    evidence = add_evidence(
+        session_id,
+        "serial_log",
+        f"自动串口采集 {port_name} @ {baud_rate}",
+        content_text="",
+        meta={"port": port_name, "baud": baud_rate, "mode": "live_capture"},
+    )
+    stop_event = threading.Event()
+    worker = threading.Thread(
+        target=serial_capture_loop,
+        args=(port_name, baud_rate, evidence["id"], stop_event),
+        daemon=True,
+    )
+    SERIAL_CAPTURE_STATE.update(
+        {
+            "running": True,
+            "sessionId": session_id,
+            "evidenceId": evidence["id"],
+            "port": port_name,
+            "baud": baud_rate,
+            "startedAt": now_ts(),
+            "lines": 0,
+            "bytes": 0,
+            "lastError": "",
+            "thread": worker,
+            "stopEvent": stop_event,
+        }
+    )
+    worker.start()
+    return evidence
+
+
+def stop_serial_capture() -> dict:
+    if not SERIAL_CAPTURE_STATE["running"]:
+        return serial_capture_status()
+    stop_event = SERIAL_CAPTURE_STATE.get("stopEvent")
+    worker = SERIAL_CAPTURE_STATE.get("thread")
+    if stop_event is not None:
+        stop_event.set()
+    if worker is not None:
+        worker.join(timeout=2.5)
+    return serial_capture_status()
+
+
+def serial_capture_status() -> dict:
+    return {
+        "running": bool(SERIAL_CAPTURE_STATE["running"]),
+        "sessionId": SERIAL_CAPTURE_STATE["sessionId"],
+        "evidenceId": SERIAL_CAPTURE_STATE["evidenceId"],
+        "port": SERIAL_CAPTURE_STATE["port"],
+        "baud": SERIAL_CAPTURE_STATE["baud"],
+        "startedAt": SERIAL_CAPTURE_STATE["startedAt"],
+        "lines": SERIAL_CAPTURE_STATE["lines"],
+        "bytes": SERIAL_CAPTURE_STATE["bytes"],
+        "lastError": SERIAL_CAPTURE_STATE["lastError"],
+    }
 
 
 def extract_text_from_file(file_name: str, content: bytes) -> tuple[str, str]:
@@ -571,8 +920,19 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
 
     for item in evidence:
         body = item.get("contentText", "") or ""
-        if not body and item.get("kind") == "snapshot":
-            body = "图像证据已保存，本轮分析以文本资料、日志和人工备注为主。"
+        meta = item.get("meta") or {}
+        if not body:
+            summary_lines = []
+            if item.get("fileName"):
+                summary_lines.append(f"file_name: {item.get('fileName')}")
+            if meta.get("mediaCategory"):
+                summary_lines.append(f"media_category: {meta.get('mediaCategory')}")
+            if meta.get("extractNote"):
+                summary_lines.append(f"extract_note: {meta.get('extractNote')}")
+            if item.get("kind") == "snapshot":
+                summary_lines.append("图像证据已保存，本轮分析以文本资料、日志、导入信息和人工输入为主。")
+            if summary_lines:
+                body = "\n".join(summary_lines)
         if not body:
             continue
         section = (
@@ -602,7 +962,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
 
     return (
         "你是嵌入式原型机联调分析助手。"
-        "你必须只根据提供的资料、日志、人工备注和设备状态进行推断，禁止臆造。"
+        "你必须只根据提供的资料、串口日志、导入信息、图片/文档附件说明和设备状态进行推断，禁止臆造。"
         "重点输出：现象总结、已用证据、可能原因、缺失信息、下一步验证步骤。"
         "如果证据不足，明确写入 missing_information。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
@@ -634,6 +994,13 @@ def try_parse_analysis_json(raw_text: str) -> dict:
 def store_analysis(session_id: str, request_text: str, result_json: dict, raw_text: str) -> dict:
     analysis_id = uuid4().hex
     now = now_ts()
+    session_payload = get_session(session_id)
+    result_json.setdefault("test_time", now)
+    result_json.setdefault("device_model", session_payload.get("deviceModel", ""))
+    result_json.setdefault("serial_number", session_payload.get("serialNumber", ""))
+    result_json.setdefault("phenomenon_summary", "")
+    result_json.setdefault("priority", "P1")
+    result_json.setdefault("risk_level", "low")
     conn = get_conn()
     try:
         conn.execute(
@@ -643,9 +1010,34 @@ def store_analysis(session_id: str, request_text: str, result_json: dict, raw_te
         touch_session(conn, session_id)
         conn.commit()
         row = conn.execute("SELECT * FROM analyses WHERE id = ?", (analysis_id,)).fetchone()
-        return analysis_to_dict(row)
+        result = analysis_to_dict(row)
     finally:
         conn.close()
+    write_session_markdown(session_id)
+    return result
+
+
+def update_analysis_result(analysis_id: str, result_json: dict) -> dict:
+    session_id = ""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT session_id FROM analyses WHERE id = ?", (analysis_id,)).fetchone()
+        if not row:
+            raise KeyError("analysis not found")
+        session_id = row["session_id"]
+        conn.execute(
+            "UPDATE analyses SET result_json = ? WHERE id = ?",
+            (json.dumps(result_json, ensure_ascii=False), analysis_id),
+        )
+        touch_session(conn, session_id)
+        conn.commit()
+        updated = conn.execute("SELECT * FROM analyses WHERE id = ?", (analysis_id,)).fetchone()
+        result = analysis_to_dict(updated)
+    finally:
+        conn.close()
+    if session_id:
+        write_session_markdown(session_id)
+    return result
 
 
 def run_session_analysis(session_id: str, request_text: str, device_ip: str, capture_snapshot: bool, request_id: str) -> dict:
@@ -704,6 +1096,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(
                 200,
                 {
+                    "appVersion": APP_VERSION,
                     "providerName": provider_config.get("providerName", ""),
                     "apiBaseUrl": provider_config.get("apiBaseUrl", ""),
                     "model": provider_config.get("model", ""),
@@ -713,6 +1106,27 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     "visionReason": provider_supports_vision(provider_config)[1],
                 },
             )
+            return
+
+        if path == "/api/provider/validate":
+            provider_config = load_provider_config()
+            validation = validate_provider_config(provider_config)
+            self.send_json(
+                200,
+                {
+                    "providerName": provider_config.get("providerName", ""),
+                    "apiConfigured": bool(provider_config.get("apiKey", "").strip()),
+                    "validation": validation,
+                },
+            )
+            return
+
+        if path == "/api/serial/ports":
+            self.send_json(200, {"ports": list_serial_port_dicts()})
+            return
+
+        if path == "/api/serial/status":
+            self.send_json(200, {"status": serial_capture_status()})
             return
 
         if path == "/api/logs":
@@ -782,6 +1196,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 session = create_session(
                     str(payload.get("title", "")).strip() or "客户调试会话",
                     str(payload.get("customerName", "")).strip(),
+                    str(payload.get("deviceModel", "")).strip(),
+                    str(payload.get("serialNumber", "")).strip(),
                     str(payload.get("deviceIp", "")).strip(),
                 )
                 self.send_json(200, {"session": session})
@@ -820,6 +1236,104 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json(500, {"error": str(exc)})
             return
 
+        if path == "/api/log-upload":
+            try:
+                form = self.parse_multipart()
+                session_id = str(form.getfirst("sessionId", "")).strip()
+                if not session_id:
+                    self.send_json(400, {"error": "sessionId is required"})
+                    return
+                file_item = form["file"] if "file" in form else None
+                if not file_item or not getattr(file_item, "file", None):
+                    self.send_json(400, {"error": "file is required"})
+                    return
+                file_name = file_item.filename or "serial.log"
+                content = file_item.file.read()
+                extracted_text, note = extract_text_from_file(file_name, content)
+                evidence = add_evidence(
+                    session_id,
+                    "serial_log",
+                    str(form.getfirst("title", "")).strip() or file_name,
+                    content_text=extracted_text or content.decode("utf-8", errors="replace") or note,
+                    file_name=file_name,
+                    file_path="",
+                    meta={"bytes": len(content), "importMode": "log_file", "extractNote": note},
+                )
+                self.send_json(200, {"ok": True, "evidence": evidence})
+            except KeyError:
+                self.send_json(404, {"error": "session not found"})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/info-upload":
+            try:
+                form = self.parse_multipart()
+                session_id = str(form.getfirst("sessionId", "")).strip()
+                if not session_id:
+                    self.send_json(400, {"error": "sessionId is required"})
+                    return
+                title = str(form.getfirst("title", "")).strip() or "导入信息"
+                content_text = str(form.getfirst("content", "")).strip()
+                file_item = form["file"] if "file" in form else None
+                file_name = ""
+                saved_path = ""
+                meta: dict = {}
+                if file_item is not None and getattr(file_item, "file", None):
+                    raw_name = file_item.filename or "upload.bin"
+                    content = file_item.file.read()
+                    file_name, saved_path = save_uploaded_file(session_id, raw_name, content)
+                    extracted_text, note = extract_text_from_file(raw_name, content)
+                    suffix = Path(raw_name).suffix.lower()
+                    media_category = "image" if suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"} else "document"
+                    meta.update({"bytes": len(content), "extractNote": note, "mediaCategory": media_category})
+                    if extracted_text:
+                        content_text = f"{content_text}\n\n{extracted_text}".strip()
+                    elif note:
+                        content_text = f"{content_text}\n\n{note}".strip()
+                    elif not content_text:
+                        content_text = f"已导入{media_category}附件：{file_name}"
+                if not content_text and not file_name:
+                    self.send_json(400, {"error": "content or file is required"})
+                    return
+                evidence = add_evidence(
+                    session_id,
+                    "imported_info",
+                    title,
+                    content_text=content_text,
+                    file_name=file_name,
+                    file_path=saved_path,
+                    meta=meta,
+                )
+                self.send_json(200, {"ok": True, "evidence": evidence})
+            except KeyError:
+                self.send_json(404, {"error": "session not found"})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/serial/start":
+            try:
+                payload = self.parse_json_body()
+                session_id = str(payload.get("sessionId", "")).strip()
+                port_name = str(payload.get("port", "")).strip()
+                baud_rate = int(payload.get("baud", 115200))
+                if not session_id or not port_name:
+                    self.send_json(400, {"error": "sessionId and port are required"})
+                    return
+                evidence = start_serial_capture(session_id, port_name, baud_rate)
+                self.send_json(200, {"ok": True, "evidence": evidence, "status": serial_capture_status()})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/serial/stop":
+            try:
+                self.send_json(200, {"ok": True, "status": stop_serial_capture()})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
         if path.startswith("/api/sessions/"):
             parts = path.split("/")
             if len(parts) < 5:
@@ -838,11 +1352,23 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 if action == "notes":
                     evidence = add_evidence(
                         session_id,
-                        "manual_note",
-                        str(payload.get("title", "")).strip() or "人工备注",
+                        "imported_info",
+                        str(payload.get("title", "")).strip() or "导入信息",
                         content_text=str(payload.get("content", "")).strip(),
                     )
                     self.send_json(200, {"ok": True, "evidence": evidence})
+                    return
+
+                if action == "meta":
+                    session = update_session(
+                        session_id,
+                        str(payload.get("title", "")).strip(),
+                        str(payload.get("customerName", "")).strip(),
+                        str(payload.get("deviceModel", "")).strip(),
+                        str(payload.get("serialNumber", "")).strip(),
+                        str(payload.get("deviceIp", "")).strip(),
+                    )
+                    self.send_json(200, {"ok": True, "session": session})
                     return
 
                 if action == "logs":
@@ -882,6 +1408,16 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     self.send_json(200, {"ok": True, "analysis": analysis, "requestId": request_id})
                     return
 
+                if action == "analysis-summary":
+                    analysis_id = str(payload.get("analysisId", "")).strip()
+                    result = payload.get("result", {})
+                    if not analysis_id or not isinstance(result, dict):
+                        self.send_json(400, {"error": "analysisId and result are required"})
+                        return
+                    analysis = update_analysis_result(analysis_id, result)
+                    self.send_json(200, {"ok": True, "analysis": analysis})
+                    return
+
             except KeyError:
                 self.send_json(404, {"error": "session not found"})
                 return
@@ -891,6 +1427,25 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json(500, {"error": str(exc), "requestId": request_id})
                 return
 
+        self.send_json(404, {"error": "Not found"})
+
+    def do_DELETE(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/api/sessions/"):
+            parts = path.split("/")
+            if len(parts) < 4 or not parts[3]:
+                self.send_json(400, {"error": "session id is required"})
+                return
+            session_id = parts[3]
+            try:
+                delete_session(session_id)
+                self.send_json(200, {"ok": True})
+            except KeyError:
+                self.send_json(404, {"error": "session not found"})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
         self.send_json(404, {"error": "Not found"})
 
 
