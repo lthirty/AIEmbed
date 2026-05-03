@@ -401,16 +401,23 @@ http://127.0.0.1:8000/
 当前默认预设：
 
 - 提供方：`MiniMax Token Plan`
-- API Base URL：`https://api.minimaxi.com/anthropic/v1/messages`
+- API Base URL：`https://api.minimaxi.com/v1/chat/completions`
 - Model：`MiniMax-M2.7`
 
 说明：
 
-- MiniMax 官方 Quickstart 对 Token Plan 推荐使用 `Anthropic-compatible` 接口
+- MiniMax 当前在本项目里优先走官方 `chat/completions` 路径，图片会以内嵌 `[图片base64:...]` 的方式发送
 - 本地代理现在同时兼容 `responses`、`chat/completions` 和 `anthropic/v1/messages`
 - 页面保存 AI 设置后会自动做一次文本接口连通性验证
 - 如果未保存 API Key，页面会弹窗提醒
 - 当前问题固定在上方，最新结果插在最上方，旧结果顺序下沉
+- 日志页会记录实际生效的 endpoint/model、图片字节数、base64 长度、是否已插入图片标记以及厂商原始返回预览
+
+当前已验证到的 MiniMax 现状：
+
+- `MiniMax-M2.7` 的文本接口可正常验证
+- 当前 `Starter Token Plan` 下，`MiniMax-Text-01` 会被服务端拒绝
+- `MiniMax-M2.7` 对图像输入的返回仍需结合日志谨慎判断，不能只根据 HTTP 200 就认定“已经正确看到了图片”
 
 ## 12. 本次实际调试记录
 

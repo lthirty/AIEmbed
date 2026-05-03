@@ -18,7 +18,7 @@ STATIC_DIR = Path(__file__).parent / "webapp"
 CONFIG_PATH = Path(__file__).parent / "ai_provider_config.json"
 DEFAULT_PROVIDER_CONFIG = {
     "providerName": os.getenv("AI_PROVIDER_NAME", "MiniMax Token Plan").strip() or "MiniMax Token Plan",
-    "apiBaseUrl": os.getenv("OPENAI_API_URL", "https://api.minimaxi.com/anthropic/v1/messages").strip() or "https://api.minimaxi.com/anthropic/v1/messages",
+    "apiBaseUrl": os.getenv("OPENAI_API_URL", "https://api.minimaxi.com/v1/chat/completions").strip() or "https://api.minimaxi.com/v1/chat/completions",
     "apiKey": os.getenv("OPENAI_API_KEY", "").strip(),
     "model": os.getenv("OPENAI_MODEL", "MiniMax-M2.7").strip() or "MiniMax-M2.7",
 }
@@ -135,13 +135,19 @@ def provider_supports_vision(provider_config: dict) -> tuple[bool, str]:
             "当前配置的 DeepSeek chat/completions 接口按官方文档仅支持文本 content，不支持 image_url 多模态输入，所以不能直接做图像分析。",
         )
 
-    if "api.minimaxi.com/anthropic" in api_base_url or "minimax" in provider_name:
+    if "minimax" in provider_name or "api.minimaxi.com" in api_base_url or "api.minimax.io" in api_base_url:
         return (
             True,
-            "MiniMax 当前按 Anthropic-compatible messages 接口处理图像输入。",
+            "MiniMax 当前按官方 /v1/chat/completions 方案处理图像输入，图片会以内嵌 [图片base64:...] 的方式发送。",
         )
 
     return True, ""
+
+
+def is_minimax_provider(provider_config: dict) -> bool:
+    provider_name = provider_config.get("providerName", "").strip().lower()
+    api_base_url = provider_config.get("apiBaseUrl", "").strip().lower()
+    return "minimax" in provider_name or "api.minimaxi.com" in api_base_url or "api.minimax.io" in api_base_url
 
 
 def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]], model: str, api_mode: str) -> dict:
@@ -237,6 +243,52 @@ def build_openai_payload(prompt: str, image_bytes: bytes, chat_history: list[dic
     }
 
 
+def build_minimax_vision_payload(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]], model: str) -> dict:
+    system_text = (
+        "你是一个图像分析助手。"
+        "请基于用户提供的ESP32-CAM截图和问题做出准确回答。"
+        "如果图片模糊、过暗、关键信息不可见，要明确说明。"
+        "不要编造图片中不存在的内容。"
+    )
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    messages: list[dict] = [{"role": "system", "content": system_text}]
+
+    for message in chat_history[-8:]:
+        role = message.get("role", "user")
+        text = message.get("text", "").strip()
+        if not text or role not in {"user", "assistant"}:
+            continue
+        messages.append({"role": role, "content": text})
+
+    messages.append(
+        {
+            "role": "user",
+            "content": (
+                f"{prompt}\n\n"
+                "请结合下面这张图片进行分析：\n"
+                f"[图片base64:{image_b64}]"
+            ),
+        }
+    )
+
+    return {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+    }
+
+
+def build_minimax_text_validation_payload(model: str) -> dict:
+    return {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are a concise assistant."},
+            {"role": "user", "content": "Reply with exactly: PROVIDER_TEXT_OK"},
+        ],
+        "stream": False,
+    }
+
+
 def parse_response_text(payload: dict, api_mode: str) -> str:
     if api_mode == "anthropic_messages":
         chunks: list[str] = []
@@ -275,6 +327,29 @@ def parse_response_text(payload: dict, api_mode: str) -> str:
     return "\n".join(chunks).strip()
 
 
+def response_indicates_missing_image(answer: str) -> bool:
+    normalized = answer.strip().lower()
+    markers = [
+        "看不到任何画面",
+        "没有收到图片",
+        "请确认图片已成功发送",
+        "重新截图发送",
+        "换个图片格式",
+        "看不到图片",
+        "无法直接处理base64",
+        "不能直接处理base64",
+        "无法直接分析base64编码图像",
+        "cannot directly process the raw base64 data",
+        "cannot directly analyze the base64 encoded image",
+        "cannot actually process the raw base64",
+        "i can't see any image",
+        "i did not receive an image",
+        "please resend the image",
+        "please upload the image",
+    ]
+    return any(marker in normalized for marker in markers)
+
+
 def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, str]], provider_config: dict, request_id: str | None = None) -> str:
     api_key = provider_config.get("apiKey", "").strip()
     api_base_url = provider_config.get("apiBaseUrl", "").strip()
@@ -304,23 +379,39 @@ def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, st
         raise RuntimeError(reason)
 
     api_mode = infer_api_mode(api_base_url)
-    payload = build_openai_payload(prompt, image_bytes, chat_history, model, api_mode)
+    effective_api_base_url = api_base_url
+    effective_model = model
+
+    if is_minimax_provider(provider_config):
+        effective_api_base_url = "https://api.minimaxi.com/v1/chat/completions"
+        effective_model = model
+        api_mode = "chat_completions"
+        payload = build_minimax_vision_payload(prompt, image_bytes, chat_history, effective_model)
+    else:
+        payload = build_openai_payload(prompt, image_bytes, chat_history, model, api_mode)
+
     add_log(
         "info",
         "provider",
         "Sending request to AI provider",
         {
             "providerName": provider_name,
-            "apiBaseUrl": api_base_url,
-            "model": model,
+            "apiBaseUrl": effective_api_base_url,
+            "configuredApiBaseUrl": api_base_url,
+            "model": effective_model,
+            "configuredModel": model,
             "apiMode": api_mode,
             "promptLength": len(prompt),
             "imageBytes": len(image_bytes),
+            "imageBase64Length": len(base64.b64encode(image_bytes).decode("ascii")) if is_minimax_provider(provider_config) else None,
+            "containsImageMarker": "[图片base64:" in json.dumps(payload, ensure_ascii=False) if is_minimax_provider(provider_config) else None,
+            "payloadPreview": json.dumps(payload, ensure_ascii=False)[:400],
+            "payloadType": "vision",
         },
         request_id,
     )
     request = urllib.request.Request(
-        api_base_url,
+        effective_api_base_url,
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -340,6 +431,7 @@ def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, st
                 {
                     "status": getattr(response, "status", 200),
                     "elapsedMs": int((time.time() - started) * 1000),
+                    "responsePreview": json.dumps(response_payload, ensure_ascii=False)[:800],
                 },
                 request_id,
             )
@@ -349,7 +441,13 @@ def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, st
             "error",
             "provider",
             "AI provider HTTP error",
-            {"status": exc.code, "body": error_body[:1000], "providerName": provider_name},
+            {
+                "status": exc.code,
+                "body": error_body[:1000],
+                "providerName": provider_name,
+                "apiBaseUrl": effective_api_base_url,
+                "model": effective_model,
+            },
             request_id,
         )
         raise RuntimeError(f"Provider API error {exc.code}: {error_body}") from exc
@@ -364,6 +462,22 @@ def call_openai(prompt: str, image_bytes: bytes, chat_history: list[dict[str, st
     if not answer:
         add_log("error", "provider", "AI provider returned no text output", {"providerName": provider_name}, request_id)
         raise RuntimeError("Provider API returned no text output.")
+
+    if response_indicates_missing_image(answer):
+        add_log(
+            "error",
+            "provider",
+            "AI provider answered but indicated the image was not received",
+            {
+                "providerName": provider_name,
+                "answerPreview": answer[:500],
+            },
+            request_id,
+        )
+        raise RuntimeError(
+            "AI provider returned a text response, but it indicates the image was not received or not understood."
+        )
+
     add_log("info", "provider", "AI response parsed successfully", {"answerLength": len(answer)}, request_id)
     return answer
 
@@ -391,10 +505,18 @@ def validate_provider_config(provider_config: dict) -> dict:
       }
 
     supports_vision, reason = provider_supports_vision(provider_config)
+    effective_api_base_url = api_base_url
+    effective_model = model
     api_mode = infer_api_mode(api_base_url)
-    if api_mode == "anthropic_messages":
+
+    if is_minimax_provider(provider_config):
+        effective_api_base_url = "https://api.minimaxi.com/v1/chat/completions"
+        effective_model = model
+        api_mode = "chat_completions"
+        request_payload = build_minimax_text_validation_payload(effective_model)
+    elif api_mode == "anthropic_messages":
         request_payload = {
-            "model": model,
+            "model": effective_model,
             "max_tokens": 128,
             "system": "You are a concise assistant.",
             "messages": [
@@ -406,7 +528,7 @@ def validate_provider_config(provider_config: dict) -> dict:
         }
     elif api_mode == "chat_completions":
         request_payload = {
-            "model": model,
+            "model": effective_model,
             "messages": [
                 {"role": "system", "content": "You are a concise assistant."},
                 {"role": "user", "content": "Reply with exactly: PROVIDER_TEXT_OK"},
@@ -415,7 +537,7 @@ def validate_provider_config(provider_config: dict) -> dict:
         }
     else:
         request_payload = {
-            "model": model,
+            "model": effective_model,
             "input": [
                 {"role": "system", "content": [{"type": "input_text", "text": "You are a concise assistant."}]},
                 {"role": "user", "content": [{"type": "input_text", "text": "Reply with exactly: PROVIDER_TEXT_OK"}]},
@@ -423,7 +545,7 @@ def validate_provider_config(provider_config: dict) -> dict:
         }
 
     request = urllib.request.Request(
-        api_base_url,
+        effective_api_base_url,
         data=json.dumps(request_payload).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -449,6 +571,8 @@ def validate_provider_config(provider_config: dict) -> dict:
             "textOk": True,
             "visionSupported": supports_vision,
             "visionReason": reason,
+            "effectiveApiBaseUrl": effective_api_base_url,
+            "effectiveModel": effective_model,
             "message": (
                 f"{provider_name} 文本接口验证成功。"
                 if supports_vision
@@ -462,6 +586,8 @@ def validate_provider_config(provider_config: dict) -> dict:
             "textOk": False,
             "visionSupported": supports_vision,
             "visionReason": reason,
+            "effectiveApiBaseUrl": effective_api_base_url,
+            "effectiveModel": effective_model,
             "message": f"{provider_name} 验证失败，HTTP {exc.code}: {error_body}",
         }
     except Exception as exc:
@@ -470,6 +596,8 @@ def validate_provider_config(provider_config: dict) -> dict:
             "textOk": False,
             "visionSupported": supports_vision,
             "visionReason": reason,
+            "effectiveApiBaseUrl": effective_api_base_url,
+            "effectiveModel": effective_model,
             "message": f"{provider_name} 验证失败：{exc}",
         }
 

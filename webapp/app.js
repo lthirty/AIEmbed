@@ -32,9 +32,10 @@ const state = {
 
 const workflowTemplate = [
   { key: "frame", name: "1. 获取当前视频画面", state: "pending", detail: "等待开始" },
-  { key: "providerCheck", name: "2. 校验 AI 配置与能力", state: "pending", detail: "等待开始" },
-  { key: "request", name: "3. 发送 AI 请求", state: "pending", detail: "等待开始" },
-  { key: "response", name: "4. 解析 AI 返回", state: "pending", detail: "等待开始" },
+  { key: "encoding", name: "2. 编码图片并准备上传", state: "pending", detail: "等待开始" },
+  { key: "providerCheck", name: "3. 校验 AI 配置与能力", state: "pending", detail: "等待开始" },
+  { key: "request", name: "4. 发送 AI 请求", state: "pending", detail: "等待开始" },
+  { key: "response", name: "5. 解析 AI 返回", state: "pending", detail: "等待开始" },
 ];
 
 let workflowState = [];
@@ -203,13 +204,17 @@ async function analyzeCurrentFrame() {
     imageDataUrl = capturePreviewFrameDataUrl();
     addMessage("system", "已从当前视频预览提取画面，正在发送给 AI 分析...");
     updateWorkflow("frame", "success", "已从当前视频预览提取一帧 JPEG 数据。");
+    updateWorkflow("encoding", "success", `浏览器已编码 JPEG Data URL，长度 ${imageDataUrl.length}。`);
   } catch (error) {
     addMessage("system", `无法直接从视频预览提取画面：${error.message}。将回退到设备 /capture 抓拍。`);
     updateWorkflow("frame", "error", `无法从当前视频预览提取图像：${error.message}。将回退到设备 /capture。`);
+    updateWorkflow("encoding", "pending", "等待后端回退到设备 /capture 抓拍。");
   }
 
   if (!state.apiConfigured) {
     updateWorkflow("providerCheck", "error", "未保存 API Key 或 AI 设置。");
+    updateWorkflow("request", "pending", "未开始。");
+    updateWorkflow("response", "pending", "未开始。");
     elements.analyzeBtn.disabled = false;
     window.alert("请先填写并保存 AI 设置，尤其是 API Key。");
     return;
@@ -237,7 +242,12 @@ async function analyzeCurrentFrame() {
       updateWorkflow("providerCheck", "error", errorText);
       updateWorkflow("request", "error", "已在本地拦截，未向视觉接口发起有效图像分析。");
       updateWorkflow("response", "pending", "未进入返回解析阶段。");
+    } else if (errorText.includes("image was not received") || errorText.includes("image was not understood")) {
+      updateWorkflow("providerCheck", "success", "AI 配置存在且请求已发出。");
+      updateWorkflow("request", "success", "请求已发送到 AI 提供方。");
+      updateWorkflow("response", "error", "AI 返回了文本，但明确表示没有收到或无法识别图片。请查看日志中的 payloadPreview、containsImageMarker、imageBase64Length 和 responsePreview。");
     } else if (errorText.includes("Snapshot") || errorText.includes("/capture")) {
+      updateWorkflow("encoding", "error", "前端没有可用帧，且后端 /capture 抓拍失败。");
       updateWorkflow("request", "error", errorText);
       updateWorkflow("response", "pending", "抓图阶段失败，未进入返回解析阶段。");
     } else if (errorText.includes("Provider API error") || errorText.includes("Provider request failed") || errorText.includes("timed out")) {
@@ -298,7 +308,10 @@ async function saveProviderConfig() {
     const visionLine = validation.visionSupported
       ? "支持图像分析。"
       : `不支持图像分析：${validation.visionReason || "当前配置不可用"}`;
-    elements.providerSaveResult.textContent = `${data.providerName} 设置已保存，${status}。${validation.message} ${visionLine}`;
+    const effectiveLine = validation.effectiveApiBaseUrl || validation.effectiveModel
+      ? ` 实际调用：${validation.effectiveApiBaseUrl || data.apiBaseUrl} ，Model：${validation.effectiveModel || data.model}。`
+      : "";
+    elements.providerSaveResult.textContent = `${data.providerName} 设置已保存，${status}。${validation.message} ${visionLine}${effectiveLine}`;
   }
 }
 

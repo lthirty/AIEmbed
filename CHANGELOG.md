@@ -2,6 +2,14 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.5.1 - 2026-05-03
+
+- Changed the default MiniMax API route from the Anthropic-compatible path to the official `https://api.minimaxi.com/v1/chat/completions`.
+- Kept the default MiniMax model at `MiniMax-M2.7` because the current Starter Token Plan rejects `MiniMax-Text-01`.
+- Added richer AI request diagnostics, including effective endpoint/model, image byte size, image base64 length, `containsImageMarker`, payload preview, and provider response preview.
+- Improved workflow details in the web page so image capture, image encoding, provider validation, request sending, and response parsing are separated more clearly.
+- Added stronger failure detection for provider replies that indicate the model did not actually receive or understand the image payload.
+
 ## v0.5.0 - 2026-05-03
 
 - Replaced the blocking Arduino `WebServer` camera service with `esp_http_server`.
@@ -9,6 +17,7 @@ All notable changes to this project should be recorded in this file.
 - Improved the device-side HTTP service for concurrent live view and snapshot access.
 - Updated the local AI viewer to prefer the currently displayed browser frame instead of always calling `/capture`.
 - Changed the default AI provider to MiniMax Token Plan and added Anthropic-compatible request support.
+- Improved diagnostics to detect "text returned but image not actually received" as a workflow failure instead of false success.
 
 ## v0.4.0 - 2026-05-03
 
