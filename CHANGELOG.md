@@ -2,6 +2,16 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.10.0 - 2026-05-04
+
+- Added `test_cases` and `test_runs` data models to the local SQLite store.
+- Added a minimal auto-test execution flow with `serial_expect` step support.
+- Added a new `自动测试` panel in the local web UI for saving test cases, running them against the current session, and reviewing recent PASS/FAIL results.
+- Added `/api/test-cases` and `/api/test-runs` endpoints plus `POST /api/test-cases/{id}/run`.
+- Added automatic failure session generation when a test run fails, including a copied latest serial log and a generated `test_report` evidence record.
+- Reframed the local homepage copy toward `自动测试 + 证据采集 + session 闭环` instead of an AI-first description.
+- Bumped the local workbench version to `v0.10.0`.
+
 ## v0.9.0 - 2026-05-04
 
 - Added `PRODUCT_REQUIREMENTS_MVP.md` to formally reposition the product from an AI-first debug page to an embedded auto-test, evidence, session, and case workflow.

@@ -27,6 +27,17 @@ const elements = {
   materialFile: document.getElementById("material-file"),
   uploadMaterialBtn: document.getElementById("upload-material-btn"),
   materialResult: document.getElementById("material-result"),
+  testCaseCode: document.getElementById("test-case-code"),
+  testCaseName: document.getElementById("test-case-name"),
+  testCaseCategory: document.getElementById("test-case-category"),
+  testCaseTarget: document.getElementById("test-case-target"),
+  testCaseSteps: document.getElementById("test-case-steps"),
+  saveTestCaseBtn: document.getElementById("save-test-case-btn"),
+  testCaseResult: document.getElementById("test-case-result"),
+  testCaseCount: document.getElementById("test-case-count"),
+  testCasesList: document.getElementById("test-cases-list"),
+  testRunCount: document.getElementById("test-run-count"),
+  testRunsHistory: document.getElementById("test-runs-history"),
   logTitle: document.getElementById("log-title"),
   logContent: document.getElementById("log-content"),
   saveLogBtn: document.getElementById("save-log-btn"),
@@ -63,6 +74,8 @@ const elements = {
 const state = {
   apiConfigured: false,
   sessions: [],
+  testCases: [],
+  testRuns: [],
   activeSessionId: "",
   serialStatus: null,
   latestAnalysis: null,
@@ -181,6 +194,20 @@ async function loadConfig() {
   await validateSavedProvider();
 }
 
+function defaultTestStepsJson() {
+  return JSON.stringify(
+    [
+      {
+        type: "serial_expect",
+        pattern: "sensor init ok",
+        timeout_ms: 3000,
+      },
+    ],
+    null,
+    2,
+  );
+}
+
 function renderSessions() {
   elements.sessionsList.innerHTML = "";
   if (!state.sessions.length) {
@@ -213,6 +240,63 @@ function renderSessions() {
       deleteSessionById(session.id).catch(showGenericError);
     });
     elements.sessionsList.appendChild(article);
+  }
+}
+
+function renderTestCases() {
+  elements.testCasesList.innerHTML = "";
+  elements.testCaseCount.textContent = `${state.testCases.length} 条`;
+  if (!state.testCases.length) {
+    elements.testCasesList.innerHTML = '<p class="helper">还没有测试用例。先新增一条最小串口判定用例。</p>';
+    return;
+  }
+  for (const testCase of state.testCases) {
+    const article = document.createElement("article");
+    article.className = "session-chip";
+    article.innerHTML = `
+      <div class="session-chip-head">
+        <div>
+          <div class="session-chip-title">${testCase.caseCode} · ${testCase.name}</div>
+          <div class="session-chip-meta">${testCase.category || "未分类"} · ${testCase.target || "未填 target"} · ${testCase.passRule}</div>
+        </div>
+        <div class="inline-actions compact">
+          <button type="button" class="secondary-btn test-case-load-btn">载入编辑</button>
+          <button type="button" class="test-case-run-btn">执行测试</button>
+        </div>
+      </div>
+    `;
+    article.querySelector(".test-case-load-btn").addEventListener("click", () => {
+      elements.testCaseCode.value = testCase.caseCode || "";
+      elements.testCaseName.value = testCase.name || "";
+      elements.testCaseCategory.value = testCase.category || "";
+      elements.testCaseTarget.value = testCase.target || "";
+      elements.testCaseSteps.value = JSON.stringify(testCase.steps || [], null, 2);
+      elements.testCaseResult.textContent = `已载入测试用例：${testCase.caseCode}`;
+    });
+    article.querySelector(".test-case-run-btn").addEventListener("click", () => runTestCase(testCase.id).catch(showGenericError));
+    elements.testCasesList.appendChild(article);
+  }
+}
+
+function renderTestRuns() {
+  elements.testRunsHistory.innerHTML = "";
+  elements.testRunCount.textContent = `${state.testRuns.length} 条`;
+  if (!state.testRuns.length) {
+    elements.testRunsHistory.innerHTML = '<tr><td colspan="7" class="table-empty">还没有测试执行记录。</td></tr>';
+    return;
+  }
+  for (const run of state.testRuns) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${run.createdAt || ""}</td>
+      <td>${run.report?.caseCode || run.caseId || ""}</td>
+      <td>${run.result || ""}</td>
+      <td>${run.failStep || "-"}</td>
+      <td>${run.deviceModel || ""}</td>
+      <td>${run.serialNumber || ""}</td>
+      <td>${run.generatedSessionId || "-"}</td>
+    `;
+    elements.testRunsHistory.appendChild(row);
   }
 }
 
@@ -400,6 +484,18 @@ async function loadSessions() {
   }
 }
 
+async function loadTestCases() {
+  const data = await apiGet("/api/test-cases");
+  state.testCases = data.testCases || [];
+  renderTestCases();
+}
+
+async function loadTestRuns() {
+  const data = await apiGet("/api/test-runs");
+  state.testRuns = data.testRuns || [];
+  renderTestRuns();
+}
+
 async function loadSessionDetail(sessionId) {
   const data = await apiGet(`/api/sessions/${sessionId}`);
   const index = state.sessions.findIndex((item) => item.id === data.id);
@@ -505,6 +601,39 @@ async function uploadMaterial() {
   } finally {
     elements.uploadMaterialBtn.disabled = false;
   }
+}
+
+async function saveTestCase() {
+  let steps;
+  try {
+    steps = JSON.parse(elements.testCaseSteps.value.trim() || "[]");
+  } catch (error) {
+    throw new Error("Steps JSON 格式不合法。");
+  }
+  const data = await apiPost("/api/test-cases", {
+    caseCode: elements.testCaseCode.value.trim(),
+    name: elements.testCaseName.value.trim(),
+    category: elements.testCaseCategory.value.trim(),
+    target: elements.testCaseTarget.value.trim(),
+    steps,
+    passRule: "all_steps_pass",
+    enabled: true,
+  });
+  elements.testCaseResult.textContent = `测试用例已保存：${data.testCase.caseCode}`;
+  await loadTestCases();
+}
+
+async function runTestCase(testCaseId) {
+  requireSession();
+  const data = await apiPost(`/api/test-cases/${testCaseId}/run`, {
+    sessionId: state.activeSessionId,
+  });
+  const run = data.run || {};
+  elements.testCaseResult.textContent =
+    run.result === "fail"
+      ? `测试失败，已自动生成问题 session：${data.generatedSessionId || "-"}`
+      : `测试通过：${run.report?.caseCode || ""}`;
+  await Promise.all([loadSessions(), loadTestRuns()]);
 }
 
 async function uploadLogFile() {
@@ -741,6 +870,7 @@ elements.createSessionBtn.addEventListener("click", () => createSession().catch(
 elements.saveSessionMetaBtn.addEventListener("click", () => saveSessionMeta().catch(showGenericError));
 elements.deleteSessionBtn.addEventListener("click", () => deleteSession().catch(showGenericError));
 elements.uploadMaterialBtn.addEventListener("click", () => uploadMaterial().catch(showGenericError));
+elements.saveTestCaseBtn.addEventListener("click", () => saveTestCase().catch(showGenericError));
 elements.saveLogBtn.addEventListener("click", () => saveLog().catch(showGenericError));
 elements.uploadLogFileBtn.addEventListener("click", () => uploadLogFile().catch(showGenericError));
 elements.refreshSerialPortsBtn.addEventListener("click", () => loadSerialPorts().catch(showGenericError));
@@ -753,5 +883,6 @@ elements.saveAnalysisSummaryBtn.addEventListener("click", () => saveAnalysisSumm
 elements.compareSelectedBtn.addEventListener("click", compareSelectedAnalyses);
 
 resetWorkflow();
-Promise.all([loadConfig(), loadSessions(), loadSerialPorts(), pollSerialStatus()]).catch(showGenericError);
+elements.testCaseSteps.value = defaultTestStepsJson();
+Promise.all([loadConfig(), loadSessions(), loadTestCases(), loadTestRuns(), loadSerialPorts(), pollSerialStatus()]).catch(showGenericError);
 startSerialPolling();

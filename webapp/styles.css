@@ -191,7 +191,16 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
   gap: 12px;
 }
 
+.test-grid {
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+}
+
 .sessions-list, .collector-stack, .serial-stack, .evidence-list {
+  display: grid;
+  gap: 12px;
+}
+
+.test-cases-list {
   display: grid;
   gap: 12px;
 }

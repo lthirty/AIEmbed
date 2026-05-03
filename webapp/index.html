@@ -12,8 +12,8 @@
     <section class="hero">
       <div>
         <p class="eyebrow">ESP32 Prototype Workbench</p>
-        <h1>资料导入、调试信息收集、串口抓取与 AI 自动分析</h1>
-        <p class="subtext">ESP32-CAM 在这里是原型机信息采集节点，不是主角。主流程围绕会话、资料、串口日志、备注和结构化分析结果展开。</p>
+        <h1>自动测试、证据采集、问题 Session 与 AI 辅助摘要</h1>
+        <p class="subtext">ESP32-CAM 在这里是原型机信息采集节点，不是主角。主流程围绕测试用例、资料导入、串口日志、问题 session 和结构化分析结果展开。</p>
         <p class="version-line">UI 版本：<strong id="app-version">-</strong></p>
       </div>
       <div class="hero-card">
@@ -249,6 +249,78 @@
                 </div>
               </details>
             </article>
+          </div>
+        </details>
+      </section>
+
+      <section class="panel test-panel">
+        <details open>
+          <summary class="summary-head">
+            <span>自动测试</span>
+            <span class="summary-helper">最小闭环：测试用例、执行记录、失败自动建 session</span>
+          </summary>
+          <div class="details-body">
+            <div class="panel-head">
+              <h2>测试用例</h2>
+              <span class="helper">首版先支持 `serial_expect` 步骤</span>
+            </div>
+            <div class="session-grid test-grid">
+              <label>
+                Case Code
+                <input id="test-case-code" type="text" placeholder="例如 I2C_SENSOR_001">
+              </label>
+              <label>
+                名称
+                <input id="test-case-name" type="text" placeholder="例如 Check sensor init log">
+              </label>
+              <label>
+                分类
+                <input id="test-case-category" type="text" placeholder="例如 UART / I2C">
+              </label>
+              <label>
+                Target
+                <input id="test-case-target" type="text" placeholder="例如 sensor_xxx">
+              </label>
+            </div>
+            <label>
+              Steps JSON
+              <textarea id="test-case-steps" rows="8" placeholder='[{"type":"serial_expect","pattern":"sensor init ok","timeout_ms":3000}]'></textarea>
+            </label>
+            <div class="inline-actions">
+              <button id="save-test-case-btn" type="button">保存测试用例</button>
+            </div>
+            <p id="test-case-result" class="helper">执行时默认对当前会话里的最新串口日志做规则判定。</p>
+
+            <section class="panel-section">
+              <div class="panel-head">
+                <h2>测试用例列表</h2>
+                <span id="test-case-count" class="helper">0 条</span>
+              </div>
+              <div id="test-cases-list" class="test-cases-list"></div>
+            </section>
+
+            <section class="panel-section">
+              <div class="panel-head">
+                <h2>最近测试结果</h2>
+                <span id="test-run-count" class="helper">0 条</span>
+              </div>
+              <div class="table-wrap">
+                <table class="analysis-table">
+                  <thead>
+                    <tr>
+                      <th>执行时间</th>
+                      <th>Case</th>
+                      <th>结果</th>
+                      <th>失败步骤</th>
+                      <th>设备型号</th>
+                      <th>序号</th>
+                      <th>生成问题 Session</th>
+                    </tr>
+                  </thead>
+                  <tbody id="test-runs-history"></tbody>
+                </table>
+              </div>
+            </section>
           </div>
         </details>
       </section>

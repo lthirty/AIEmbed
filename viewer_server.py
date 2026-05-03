@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.9.0"
+APP_VERSION = "v0.10.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -112,6 +112,35 @@ def init_storage() -> None:
                 raw_text TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES sessions(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS test_cases (
+                id TEXT PRIMARY KEY,
+                case_code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT '',
+                target TEXT NOT NULL DEFAULT '',
+                steps_json TEXT NOT NULL,
+                pass_rule TEXT NOT NULL DEFAULT 'all_steps_pass',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS test_runs (
+                id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                session_id TEXT NOT NULL DEFAULT '',
+                generated_session_id TEXT NOT NULL DEFAULT '',
+                device_model TEXT NOT NULL DEFAULT '',
+                serial_number TEXT NOT NULL DEFAULT '',
+                started_at TEXT NOT NULL,
+                ended_at TEXT NOT NULL,
+                result TEXT NOT NULL,
+                fail_step TEXT NOT NULL DEFAULT '',
+                report_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(case_id) REFERENCES test_cases(id)
             );
             """
         )
@@ -425,6 +454,38 @@ def analysis_to_dict(row: sqlite3.Row) -> dict:
     }
 
 
+def test_case_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "caseCode": row["case_code"],
+        "name": row["name"],
+        "category": row["category"],
+        "target": row["target"],
+        "steps": json.loads(row["steps_json"] or "[]"),
+        "passRule": row["pass_rule"],
+        "enabled": bool(row["enabled"]),
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def test_run_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "caseId": row["case_id"],
+        "sessionId": row["session_id"],
+        "generatedSessionId": row["generated_session_id"],
+        "deviceModel": row["device_model"],
+        "serialNumber": row["serial_number"],
+        "startedAt": row["started_at"],
+        "endedAt": row["ended_at"],
+        "result": row["result"],
+        "failStep": row["fail_step"],
+        "report": json.loads(row["report_json"] or "{}"),
+        "createdAt": row["created_at"],
+    }
+
+
 def create_session(title: str, customer_name: str, device_model: str, serial_number: str, device_ip: str = "") -> dict:
     session_id = uuid4().hex
     now = now_ts()
@@ -510,6 +571,87 @@ def list_sessions() -> list[dict]:
         conn.close()
 
 
+def list_test_cases() -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM test_cases ORDER BY updated_at DESC, created_at DESC").fetchall()
+        return [test_case_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_test_case(test_case_id: str) -> dict:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM test_cases WHERE id = ?", (test_case_id,)).fetchone()
+        if not row:
+            raise KeyError("test case not found")
+        return test_case_to_dict(row)
+    finally:
+        conn.close()
+
+
+def upsert_test_case(case_code: str, name: str, category: str, target: str, steps: list[dict], pass_rule: str, enabled: bool = True) -> dict:
+    now = now_ts()
+    normalized_code = case_code.strip() or f"CASE-{uuid4().hex[:8].upper()}"
+    conn = get_conn()
+    try:
+        existing = conn.execute("SELECT id FROM test_cases WHERE case_code = ?", (normalized_code,)).fetchone()
+        if existing:
+            test_case_id = existing["id"]
+            conn.execute(
+                """
+                UPDATE test_cases
+                SET name = ?, category = ?, target = ?, steps_json = ?, pass_rule = ?, enabled = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    name.strip() or normalized_code,
+                    category.strip(),
+                    target.strip(),
+                    json.dumps(steps, ensure_ascii=False),
+                    pass_rule.strip() or "all_steps_pass",
+                    1 if enabled else 0,
+                    now,
+                    test_case_id,
+                ),
+            )
+        else:
+            test_case_id = uuid4().hex
+            conn.execute(
+                """
+                INSERT INTO test_cases (id, case_code, name, category, target, steps_json, pass_rule, enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    test_case_id,
+                    normalized_code,
+                    name.strip() or normalized_code,
+                    category.strip(),
+                    target.strip(),
+                    json.dumps(steps, ensure_ascii=False),
+                    pass_rule.strip() or "all_steps_pass",
+                    1 if enabled else 0,
+                    now,
+                    now,
+                ),
+            )
+        conn.commit()
+        row = conn.execute("SELECT * FROM test_cases WHERE id = ?", (test_case_id,)).fetchone()
+        return test_case_to_dict(row)
+    finally:
+        conn.close()
+
+
+def list_test_runs(limit: int = 30) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM test_runs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [test_run_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def get_session(session_id: str) -> dict:
     conn = get_conn()
     try:
@@ -524,6 +666,120 @@ def get_session(session_id: str) -> dict:
         return payload
     finally:
         conn.close()
+
+
+def create_fail_session_from_test_run(base_session: dict, test_case: dict, report: dict) -> dict:
+    fail_session = create_session(
+        title=f"FAIL {test_case.get('caseCode') or test_case.get('name')} {now_ts()}",
+        customer_name=base_session.get("customerName", ""),
+        device_model=base_session.get("deviceModel", ""),
+        serial_number=base_session.get("serialNumber", ""),
+        device_ip=base_session.get("deviceIp", ""),
+    )
+    latest_logs = [item for item in base_session.get("evidence", []) if item.get("kind") == "serial_log"][:1]
+    for log_item in latest_logs:
+        add_evidence(
+            fail_session["id"],
+            "serial_log",
+            f"失败关联日志：{log_item.get('title')}",
+            content_text=log_item.get("contentText", ""),
+            file_name=log_item.get("fileName", ""),
+            file_path=log_item.get("filePath", ""),
+            meta=log_item.get("meta", {}),
+        )
+    add_evidence(
+        fail_session["id"],
+        "test_report",
+        f"自动测试失败报告：{test_case.get('caseCode') or test_case.get('name')}",
+        content_text=json.dumps(report, ensure_ascii=False, indent=2),
+        meta={"source": "test_run", "caseId": test_case.get("id", "")},
+    )
+    return fail_session
+
+
+def execute_test_case(test_case_id: str, session_id: str) -> dict:
+    test_case = get_test_case(test_case_id)
+    if not test_case.get("enabled", True):
+        raise RuntimeError("该测试用例已禁用。")
+    base_session = get_session(session_id)
+    steps = test_case.get("steps", [])
+    serial_logs = [item.get("contentText", "") for item in base_session.get("evidence", []) if item.get("kind") == "serial_log"]
+    serial_text = "\n".join(serial_logs)
+    started_at = now_ts()
+    step_results: list[dict] = []
+    overall_result = "pass"
+    fail_step = ""
+    for index, step in enumerate(steps, start=1):
+        step_id = step.get("step_id") or f"step_{index}"
+        step_type = step.get("type", "")
+        result = {"stepId": step_id, "type": step_type, "pass": False, "detail": ""}
+        if step_type == "serial_expect":
+            pattern = str(step.get("pattern", "")).strip()
+            matched = bool(pattern) and pattern in serial_text
+            result["pass"] = matched
+            result["detail"] = f"pattern={pattern}" if pattern else "缺少 pattern"
+        elif step_type == "delay":
+            result["pass"] = True
+            result["detail"] = f"delay_ms={step.get('delay_ms', 0)}"
+        else:
+            result["pass"] = False
+            result["detail"] = f"当前 MVP 尚未实现步骤类型：{step_type}"
+        step_results.append(result)
+        if not result["pass"] and not fail_step:
+            overall_result = "fail"
+            fail_step = step_id
+            if test_case.get("passRule", "all_steps_pass") == "all_steps_pass":
+                break
+
+    ended_at = now_ts()
+    report = {
+        "caseCode": test_case.get("caseCode", ""),
+        "caseName": test_case.get("name", ""),
+        "sessionId": session_id,
+        "deviceModel": base_session.get("deviceModel", ""),
+        "serialNumber": base_session.get("serialNumber", ""),
+        "startedAt": started_at,
+        "endedAt": ended_at,
+        "result": overall_result,
+        "failStep": fail_step,
+        "stepResults": step_results,
+    }
+
+    generated_session_id = ""
+    if overall_result == "fail":
+        fail_session = create_fail_session_from_test_run(base_session, test_case, report)
+        generated_session_id = fail_session["id"]
+
+    run_id = uuid4().hex
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO test_runs
+            (id, case_id, session_id, generated_session_id, device_model, serial_number, started_at, ended_at, result, fail_step, report_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                test_case_id,
+                session_id,
+                generated_session_id,
+                base_session.get("deviceModel", ""),
+                base_session.get("serialNumber", ""),
+                started_at,
+                ended_at,
+                overall_result,
+                fail_step,
+                json.dumps(report, ensure_ascii=False),
+                ended_at,
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM test_runs WHERE id = ?", (run_id,)).fetchone()
+        run_payload = test_run_to_dict(row)
+    finally:
+        conn.close()
+    return {"run": run_payload, "generatedSessionId": generated_session_id}
 
 
 def touch_session(conn: sqlite3.Connection, session_id: str) -> None:
@@ -1137,6 +1393,14 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(200, {"sessions": list_sessions()})
             return
 
+        if path == "/api/test-cases":
+            self.send_json(200, {"testCases": list_test_cases()})
+            return
+
+        if path == "/api/test-runs":
+            self.send_json(200, {"testRuns": list_test_runs()})
+            return
+
         if path.startswith("/api/sessions/"):
             session_id = path.split("/")[3] if len(path.split("/")) > 3 else ""
             if not session_id:
@@ -1201,6 +1465,27 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     str(payload.get("deviceIp", "")).strip(),
                 )
                 self.send_json(200, {"session": session})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/test-cases":
+            try:
+                payload = self.parse_json_body()
+                steps = payload.get("steps", [])
+                if not isinstance(steps, list):
+                    self.send_json(400, {"error": "steps must be a list"})
+                    return
+                test_case = upsert_test_case(
+                    str(payload.get("caseCode", "")).strip(),
+                    str(payload.get("name", "")).strip(),
+                    str(payload.get("category", "")).strip(),
+                    str(payload.get("target", "")).strip(),
+                    steps,
+                    str(payload.get("passRule", "all_steps_pass")).strip() or "all_steps_pass",
+                    bool(payload.get("enabled", True)),
+                )
+                self.send_json(200, {"ok": True, "testCase": test_case})
             except Exception as exc:
                 self.send_json(500, {"error": str(exc)})
             return
@@ -1431,6 +1716,24 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 request_id = str(int(time.time() * 1000))
                 add_log("error", "request", "Session request failed", {"sessionId": session_id, "action": action, "error": str(exc)}, request_id)
                 self.send_json(500, {"error": str(exc), "requestId": request_id})
+                return
+
+        if path.startswith("/api/test-cases/"):
+            parts = path.split("/")
+            if len(parts) >= 5 and parts[4] == "run":
+                test_case_id = parts[3]
+                try:
+                    payload = self.parse_json_body()
+                    session_id = str(payload.get("sessionId", "")).strip()
+                    if not session_id:
+                        self.send_json(400, {"error": "sessionId is required"})
+                        return
+                    result = execute_test_case(test_case_id, session_id)
+                    self.send_json(200, {"ok": True, **result})
+                except KeyError as exc:
+                    self.send_json(404, {"error": str(exc)})
+                except Exception as exc:
+                    self.send_json(500, {"error": str(exc)})
                 return
 
         self.send_json(404, {"error": "Not found"})
