@@ -2,6 +2,12 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.8.1 - 2026-05-03
+
+- Fixed multipart upload handling for `资料导入` so file upload no longer throws `Cannot be converted to bool.`
+- Fixed the same `FieldStorage` boolean-conversion bug for `导入串口文件`.
+- Bumped the local workbench version to `v0.8.1` after the upload hotfix.
+
 ## v0.8.0 - 2026-05-03
 
 - Split `资料导入` into its own top-level panel above `信息收集` for clearer workflow separation.

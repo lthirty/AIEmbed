@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.8.0"
+APP_VERSION = "v0.8.1"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1212,8 +1212,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 if not session_id:
                     self.send_json(400, {"error": "sessionId is required"})
                     return
-                file_item = form["file"] if "file" in form else None
-                if not file_item or not getattr(file_item, "file", None):
+                if "file" not in form:
+                    self.send_json(400, {"error": "file is required"})
+                    return
+                file_item = form["file"]
+                if getattr(file_item, "file", None) is None:
                     self.send_json(400, {"error": "file is required"})
                     return
                 file_name = file_item.filename or "upload.bin"
@@ -1243,8 +1246,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 if not session_id:
                     self.send_json(400, {"error": "sessionId is required"})
                     return
-                file_item = form["file"] if "file" in form else None
-                if not file_item or not getattr(file_item, "file", None):
+                if "file" not in form:
+                    self.send_json(400, {"error": "file is required"})
+                    return
+                file_item = form["file"]
+                if getattr(file_item, "file", None) is None:
                     self.send_json(400, {"error": "file is required"})
                     return
                 file_name = file_item.filename or "serial.log"
