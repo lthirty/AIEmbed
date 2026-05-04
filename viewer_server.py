@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.16.0"
+APP_VERSION = "v0.17.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -702,6 +702,55 @@ def delete_session(session_id: str) -> None:
                 pass
     finally:
         conn.close()
+
+
+def delete_evidence(evidence_id: str) -> str:
+    session_id = ""
+    file_path = ""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT session_id, file_path FROM evidence WHERE id = ?", (evidence_id,)).fetchone()
+        if not row:
+            raise KeyError("evidence not found")
+        session_id = row["session_id"]
+        file_path = (row["file_path"] or "").strip()
+        conn.execute("DELETE FROM evidence WHERE id = ?", (evidence_id,))
+        if session_id:
+            touch_session(conn, session_id)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if file_path:
+        try:
+            path = Path(file_path)
+            if path.exists():
+                path.unlink()
+        except Exception:
+            pass
+    if session_id:
+        write_session_markdown(session_id)
+    return session_id
+
+
+def delete_analysis(analysis_id: str) -> str:
+    session_id = ""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT session_id FROM analyses WHERE id = ?", (analysis_id,)).fetchone()
+        if not row:
+            raise KeyError("analysis not found")
+        session_id = row["session_id"]
+        conn.execute("DELETE FROM analyses WHERE id = ?", (analysis_id,))
+        if session_id:
+            touch_session(conn, session_id)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if session_id:
+        write_session_markdown(session_id)
+    return session_id
 
 
 def list_sessions() -> list[dict]:
@@ -1797,6 +1846,8 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
 
     schema = {
         "phenomenon_summary": "",
+        "phenomenon_items": [""],
+        "layered_validation_rows": [{"reason": "", "method": "", "result": "", "owner": ""}],
         "layered_analysis": [{"layer": "", "judgement": "", "why": ""}],
         "evidence_used": [{"evidence_title": "", "kind": "", "why_it_matters": ""}],
         "possible_causes": [{"label": "", "confidence": 0.0, "reasoning": "", "required_next_check": ""}],
@@ -1822,6 +1873,9 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
             "reusable_patterns": [""],
         },
         "case_update_hint": {"should_promote_to_case": False, "candidate_root_cause_tags": [""]},
+        "root_cause_items": [],
+        "solution_items": [],
+        "lessons_items": [],
     }
 
     return (
@@ -1829,7 +1883,9 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "你的职责不是直接替工程师下最终结论，而是根据流程给出结构化分析和下一步引导。"
         "你必须只根据提供的资料、串口日志、导入信息、附件说明、历史沉淀和测试库进行推断，禁止臆造。"
         "请优先遵循六步协议：现象、分层分析、验证方法、根因、解决方案、经验总结。"
-        "重点输出：现象总结、分层分析、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
+        "本轮先只完成现象，以及“分层分析+验证方法”的合并条目。"
+        "根因、解决方案、经验总结必须先留空，等待人工验证后再填写。"
+        "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
         "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
         "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
@@ -1868,6 +1924,8 @@ def store_analysis(session_id: str, request_text: str, result_json: dict, raw_te
     result_json.setdefault("device_model", session_payload.get("deviceModel", ""))
     result_json.setdefault("serial_number", session_payload.get("serialNumber", ""))
     result_json.setdefault("phenomenon_summary", "")
+    result_json.setdefault("phenomenon_items", [])
+    result_json.setdefault("layered_validation_rows", [])
     result_json.setdefault("layered_analysis", [])
     result_json.setdefault("guidance_checklist", [])
     result_json.setdefault("evidence_checklist", [])
@@ -1877,6 +1935,12 @@ def store_analysis(session_id: str, request_text: str, result_json: dict, raw_te
     result_json.setdefault("fishbone_diagram", {"problem": "", "branches": []})
     result_json.setdefault("mindmap_tree", {"root": "", "children": []})
     result_json.setdefault("related_assets", {"recommended_test_cases": [], "similar_session_hints": [], "reusable_patterns": []})
+    result_json["root_cause_items"] = []
+    result_json["solution_items"] = []
+    result_json["lessons_items"] = []
+    result_json["root_cause_summary"] = ""
+    result_json["solution_summary"] = ""
+    result_json["lessons_summary"] = ""
     conn = get_conn()
     try:
         conn.execute(
@@ -2595,6 +2659,34 @@ class ViewerHandler(SimpleHTTPRequestHandler):
     def do_DELETE(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path.startswith("/api/evidence/"):
+            parts = path.split("/")
+            if len(parts) < 4 or not parts[3]:
+                self.send_json(400, {"error": "evidence id is required"})
+                return
+            evidence_id = parts[3]
+            try:
+                session_id = delete_evidence(evidence_id)
+                self.send_json(200, {"ok": True, "sessionId": session_id})
+            except KeyError:
+                self.send_json(404, {"error": "evidence not found"})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+        if path.startswith("/api/analyses/"):
+            parts = path.split("/")
+            if len(parts) < 4 or not parts[3]:
+                self.send_json(400, {"error": "analysis id is required"})
+                return
+            analysis_id = parts[3]
+            try:
+                session_id = delete_analysis(analysis_id)
+                self.send_json(200, {"ok": True, "sessionId": session_id})
+            except KeyError:
+                self.send_json(404, {"error": "analysis not found"})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
         if path.startswith("/api/sessions/"):
             parts = path.split("/")
             if len(parts) < 4 or not parts[3]:

@@ -88,17 +88,12 @@
               <span class="helper">会话管理和总览信息已并入分析页</span>
             </div>
             <div id="overview-counts" class="overview-grid"></div>
-            <div class="form-grid four">
+            <div class="session-inline-grid">
               <label>会话标题<input id="session-title" type="text" placeholder="例如 客户A 首轮联调"></label>
               <label>客户名称<input id="session-customer" type="text" placeholder="例如 客户A"></label>
               <label>设备型号<input id="device-model" type="text" placeholder="例如 ESP32-CAM"></label>
               <label>序号<input id="serial-number" type="text" placeholder="例如 SN-2026-0001"></label>
-              <label>问题类型<input id="issue-type" type="text" placeholder="例如 UART / I2C / WIFI"></label>
-              <label>严重级别<select id="severity"><option value="P0">P0</option><option value="P1" selected>P1</option><option value="P2">P2</option><option value="P3">P3</option></select></label>
-              <label>当前阶段<select id="workflow-stage"><option value="phenomenon">现象</option><option value="layered_analysis">分层分析</option><option value="validation">验证方法</option><option value="root_cause">根因</option><option value="solution">解决方案</option><option value="lessons">经验总结</option></select></label>
-              <label>Owner<input id="owner" type="text" placeholder="例如 HW-A / FW-B"></label>
             </div>
-            <label>问题现象<textarea id="session-symptom" rows="4" placeholder="描述实际问题、影响范围和触发条件"></textarea></label>
             <div class="inline-actions">
               <button id="create-session-btn" type="button">创建新会话</button>
               <button id="save-session-meta-btn" type="button">保存当前会话</button>
@@ -116,11 +111,11 @@
           <section class="panel">
             <div class="panel-head">
               <h3>01. 资料导入与问题描述</h3>
-              <span class="helper">先导入规格书、测试报告、图片等资料，再描述本轮问题和分析目标</span>
+              <span class="helper">先导入规格书、测试报告、图片等资料，再补充问题描述、日志和附件</span>
             </div>
             <section class="guide-strip">
               <div class="guide-step"><strong>Step 1</strong><span>导入规格书、测试报告、图片等资料</span></div>
-              <div class="guide-step"><strong>Step 2</strong><span>描述碰到的问题与分析目标</span></div>
+              <div class="guide-step"><strong>Step 2</strong><span>描述碰到的问题，并补充测试报告、图片或日志</span></div>
               <div class="guide-step"><strong>Step 3</strong><span>让 AI 结合参考库生成分析与验证建议</span></div>
               <div class="guide-step"><strong>Step 4</strong><span>人工执行、修正并沉淀结论</span></div>
             </section>
@@ -133,8 +128,11 @@
             </article>
 
             <div class="evidence-summary">
-              <span class="helper">已导入资料与附件</span>
-              <div id="evidence-inline-list" class="evidence-chip-list"></div>
+              <div class="panel-head compact-head">
+                <span class="helper">已导入资料与附件</span>
+                <span id="evidence-count" class="helper">0 条</span>
+              </div>
+              <div id="evidence-inline-list" class="evidence-manage-list"></div>
             </div>
 
             <article class="stack-card">
@@ -145,14 +143,12 @@
               <button id="save-info-btn" type="button">导入问题信息</button>
               <p id="info-result" class="helper">这里可导入测试报告、图片、日志或补充问题说明。</p>
             </article>
-
-            <label>本轮问题描述 / 分析目标<textarea id="analysis-request" rows="5" placeholder="例如：客户反馈设备偶发重启。请结合规格书、测试报告、图片、日志和历史经验，按 01~06 的顺序分析并给出下一步验证动作。"></textarea></label>
           </section>
 
           <section class="panel">
             <div class="panel-head">
               <h3>02. AI 分析</h3>
-              <span class="helper">AI 会参考你导入的资料、当前证据和经验库，按 01~06 的顺序生成可编辑分析结果</span>
+              <span class="helper">AI 会参考你导入的资料、当前证据和经验库，先给出现象和验证建议，根因与解决方案留待人工确认</span>
             </div>
             <div class="inline-actions">
               <button id="suggest-missing-btn" type="button">检测缺失信息</button>
@@ -194,7 +190,7 @@
                     <th>优先级</th>
                     <th>风险等级</th>
                     <th>现象总结</th>
-                    <th>分析目标</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="analysis-history"></tbody>

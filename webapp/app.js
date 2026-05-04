@@ -23,11 +23,6 @@ const elements = {
   sessionCustomer: document.getElementById("session-customer"),
   deviceModel: document.getElementById("device-model"),
   serialNumber: document.getElementById("serial-number"),
-  issueType: document.getElementById("issue-type"),
-  severity: document.getElementById("severity"),
-  workflowStage: document.getElementById("workflow-stage"),
-  sessionSymptom: document.getElementById("session-symptom"),
-  owner: document.getElementById("owner"),
   createSessionBtn: document.getElementById("create-session-btn"),
   saveSessionMetaBtn: document.getElementById("save-session-meta-btn"),
   deleteSessionBtn: document.getElementById("delete-session-btn"),
@@ -35,13 +30,13 @@ const elements = {
   materialFile: document.getElementById("material-file"),
   uploadMaterialBtn: document.getElementById("upload-material-btn"),
   materialResult: document.getElementById("material-result"),
+  evidenceCount: document.getElementById("evidence-count"),
   evidenceInlineList: document.getElementById("evidence-inline-list"),
   infoTitle: document.getElementById("info-title"),
   infoContent: document.getElementById("info-content"),
   infoFile: document.getElementById("info-file"),
   saveInfoBtn: document.getElementById("save-info-btn"),
   infoResult: document.getElementById("info-result"),
-  analysisRequest: document.getElementById("analysis-request"),
   suggestMissingBtn: document.getElementById("suggest-missing-btn"),
   analyzeBtn: document.getElementById("analyze-btn"),
   analysisStatus: document.getElementById("analysis-status"),
@@ -75,6 +70,13 @@ const state = {
   knowledge: [],
   selectedKnowledgeId: "",
   lastMissingInfo: [],
+  sectionEditState: {
+    phenomenon: false,
+    layeredValidation: false,
+    rootCause: false,
+    solution: false,
+    lessons: false,
+  },
 };
 
 const workflowTemplate = [
@@ -86,24 +88,16 @@ const workflowTemplate = [
 
 let workflowState = [];
 
-function safeText(value, fallback = "") {
-  return String(value ?? fallback);
-}
-
 function showGenericError(error) {
   console.error(error);
   const message = error?.message || "操作失败";
-  if (elements.analysisStatus) {
-    elements.analysisStatus.textContent = message;
-    elements.analysisStatus.classList.add("error");
-  }
+  elements.analysisStatus.textContent = message;
+  elements.analysisStatus.classList.add("error");
   window.alert(message);
 }
 
 function requireSession() {
-  if (!state.activeSessionId) {
-    throw new Error("请先创建或选择一个会话。");
-  }
+  if (!state.activeSessionId) throw new Error("请先创建或选择一个会话。");
 }
 
 async function apiGet(url) {
@@ -139,7 +133,7 @@ function updateApiKeyStatus(saved) {
 function setCurrentView(view) {
   state.currentView = view;
   const titles = {
-    analysis: ["分析中心", "按“资料导入 -> 问题描述 -> AI 分析 -> 人工修订”推进定位。"],
+    analysis: ["分析中心", "按“资料导入 -> 问题描述 -> AI 分析 -> 人工确认”推进定位。"],
     library: ["案例库", "查看、搜索、复用历史经验和外部资源。"],
   };
   const [title, subtitle] = titles[view] || titles.analysis;
@@ -210,10 +204,6 @@ async function loadConfig() {
 
 async function loadOverview() {
   state.overview = await apiGet("/api/workbench/overview");
-  renderOverview();
-}
-
-function renderOverview() {
   const counts = state.overview?.counts || {};
   const items = [
     ["总会话数", counts.sessions || 0],
@@ -222,16 +212,19 @@ function renderOverview() {
     ["证据条目数", counts.evidence || 0],
     ["知识条目数", counts.knowledge || 0],
   ];
-  elements.overviewCounts.innerHTML = items
-    .map(
-      ([label, value]) => `
-        <article class="overview-card">
-          <div class="overview-value">${value}</div>
-          <div class="overview-label">${label}</div>
-        </article>
-      `,
-    )
-    .join("");
+  elements.overviewCounts.innerHTML = items.map(([label, value]) => `
+    <article class="overview-card">
+      <div class="overview-value">${value}</div>
+      <div class="overview-label">${label}</div>
+    </article>
+  `).join("");
+}
+
+function renderSessionMetaSummary() {
+  const session = state.sessions.find((item) => item.id === state.activeSessionId);
+  elements.activeSessionLabel.textContent = session
+    ? `${session.title} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"}`
+    : "未选择";
 }
 
 function renderSessionList() {
@@ -246,7 +239,7 @@ function renderSessionList() {
     article.className = `list-item compact-row selectable ${session.id === state.activeSessionId ? "active" : ""}`;
     article.innerHTML = `
       <strong>${session.title}</strong>
-      <span class="item-meta">${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"} · ${session.updatedAt || ""}</span>
+      <span class="item-meta">${session.customerName || "未填客户"} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"} · ${session.updatedAt || ""}</span>
     `;
     article.addEventListener("click", () => {
       state.activeSessionId = session.id;
@@ -256,77 +249,19 @@ function renderSessionList() {
   });
 }
 
-function renderSessionMetaSummary() {
-  const session = state.sessions.find((item) => item.id === state.activeSessionId);
-  elements.activeSessionLabel.textContent = session
-    ? `${session.title} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"}`
-    : "未选择";
-}
-
 async function loadSessions() {
   const data = await apiGet("/api/sessions");
   state.sessions = data.sessions || [];
   if (!state.activeSessionId && state.sessions.length) {
     state.activeSessionId = state.sessions[0].id;
   }
-  renderSessionList();
   renderSessionMetaSummary();
+  renderSessionList();
   if (state.activeSessionId) {
     await loadSessionDetail(state.activeSessionId);
   } else {
     renderReadableAnalysis(null);
   }
-}
-
-function evidenceChipText(item) {
-  const title = item.title || item.fileName || item.kind || "未命名资料";
-  const fileName = item.fileName && item.fileName !== title ? item.fileName : "";
-  const kindMap = {
-    material: "资料",
-    imported_info: "问题信息",
-    serial_log: "日志",
-    snapshot: "图片",
-  };
-  const kind = kindMap[item.kind] || item.kind || "";
-  return [title, fileName, kind].filter(Boolean).join(" · ");
-}
-
-function renderEvidenceInlineList() {
-  const evidence = state.activeSessionDetail?.evidence || [];
-  elements.evidenceInlineList.innerHTML = "";
-  if (!evidence.length) {
-    elements.evidenceInlineList.innerHTML = '<span class="helper">当前还没有导入任何资料或附件。</span>';
-    return;
-  }
-  evidence.slice(0, 24).forEach((item) => {
-    const chip = document.createElement("span");
-    chip.className = "evidence-chip";
-    chip.textContent = evidenceChipText(item);
-    chip.title = evidenceChipText(item);
-    elements.evidenceInlineList.appendChild(chip);
-  });
-}
-
-async function loadSessionDetail(sessionId) {
-  const data = await apiGet(`/api/sessions/${sessionId}`);
-  state.activeSessionDetail = data;
-  const index = state.sessions.findIndex((item) => item.id === data.id);
-  if (index >= 0) {
-    state.sessions[index] = { ...state.sessions[index], ...data };
-  }
-  elements.sessionTitle.value = data.title || "";
-  elements.sessionCustomer.value = data.customerName || "";
-  elements.deviceModel.value = data.deviceModel || "";
-  elements.serialNumber.value = data.serialNumber || "";
-  elements.issueType.value = data.issueType || "";
-  elements.severity.value = data.severity || "P1";
-  elements.workflowStage.value = data.workflowStage || "phenomenon";
-  elements.sessionSymptom.value = data.symptom || "";
-  elements.owner.value = data.owner || "";
-  renderSessionList();
-  renderSessionMetaSummary();
-  renderEvidenceInlineList();
-  renderAnalyses(data.analyses || []);
 }
 
 async function createSession() {
@@ -335,11 +270,11 @@ async function createSession() {
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
     serialNumber: elements.serialNumber.value.trim(),
-    issueType: elements.issueType.value.trim(),
-    severity: elements.severity.value,
-    workflowStage: elements.workflowStage.value,
-    symptom: elements.sessionSymptom.value.trim(),
-    owner: elements.owner.value.trim(),
+    issueType: "",
+    severity: "P1",
+    workflowStage: "phenomenon",
+    symptom: "",
+    owner: "",
     deviceIp: state.activeSessionDetail?.deviceIp || "",
   });
   state.activeSessionId = data.session.id;
@@ -355,11 +290,11 @@ async function saveSessionMeta() {
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
     serialNumber: elements.serialNumber.value.trim(),
-    issueType: elements.issueType.value.trim(),
-    severity: elements.severity.value,
-    workflowStage: elements.workflowStage.value,
-    symptom: elements.sessionSymptom.value.trim(),
-    owner: elements.owner.value.trim(),
+    issueType: state.activeSessionDetail?.issueType || "",
+    severity: state.activeSessionDetail?.severity || "P1",
+    workflowStage: state.activeSessionDetail?.workflowStage || "phenomenon",
+    symptom: state.activeSessionDetail?.symptom || "",
+    owner: state.activeSessionDetail?.owner || "",
     deviceIp: state.activeSessionDetail?.deviceIp || "",
   });
   elements.analysisStatus.textContent = "当前会话已保存。";
@@ -436,19 +371,81 @@ async function saveImportedInfo() {
   await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
 }
 
+async function deleteEvidence(evidenceId) {
+  requireSession();
+  if (!window.confirm("确定删除这条资料或附件吗？")) return;
+  const response = await fetch(`/api/evidence/${evidenceId}`, { method: "DELETE" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "delete failed");
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+}
+
+function renderEvidenceList() {
+  const evidence = state.activeSessionDetail?.evidence || [];
+  elements.evidenceCount.textContent = `${evidence.length} 条`;
+  elements.evidenceInlineList.innerHTML = "";
+  if (!evidence.length) {
+    elements.evidenceInlineList.innerHTML = '<p class="helper">当前还没有导入任何资料或附件。</p>';
+    return;
+  }
+  evidence.forEach((item) => {
+    const article = document.createElement("article");
+    article.className = "list-item compact-row";
+    article.innerHTML = `
+      <strong>${item.title || item.fileName || "未命名资料"}</strong>
+      <span class="item-meta">${[item.fileName || "", item.kind || "", item.createdAt || ""].filter(Boolean).join(" · ")}</span>
+    `;
+    const actions = document.createElement("div");
+    actions.className = "inline-actions mini-actions";
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "danger-button";
+    delBtn.textContent = "删除";
+    delBtn.addEventListener("click", () => deleteEvidence(item.id).catch(showGenericError));
+    actions.appendChild(delBtn);
+    article.appendChild(actions);
+    elements.evidenceInlineList.appendChild(article);
+  });
+}
+
+async function loadSessionDetail(sessionId) {
+  const data = await apiGet(`/api/sessions/${sessionId}`);
+  state.activeSessionDetail = data;
+  const index = state.sessions.findIndex((item) => item.id === data.id);
+  if (index >= 0) {
+    state.sessions[index] = { ...state.sessions[index], ...data };
+  }
+  elements.sessionTitle.value = data.title || "";
+  elements.sessionCustomer.value = data.customerName || "";
+  elements.deviceModel.value = data.deviceModel || "";
+  elements.serialNumber.value = data.serialNumber || "";
+  renderSessionMetaSummary();
+  renderSessionList();
+  renderEvidenceList();
+  renderAnalyses(data.analyses || []);
+}
+
 function hasEvidenceReady() {
   return (state.activeSessionDetail?.evidence || []).length > 0;
+}
+
+function buildDefaultAnalysisPrompt() {
+  const lines = [
+    "请基于当前会话里的资料、问题描述、测试报告、图片和日志进行结构化分析。",
+    "先完成：01 现象。",
+    "再完成：02-03 分层分析与验证方法。",
+    "04 根因、05 解决方案、06 经验总结先留空，等待人工定位后再补。",
+    "02-03 每条请尽量拆分为：原因分析、验证方法、验证结果、责任人。",
+  ];
+  return lines.join("\n");
 }
 
 function validateAnalysisPrerequisites() {
   requireSession();
   const issues = [];
-  if (!hasEvidenceReady()) {
-    issues.push("还没有任何资料或附件，请先完成资料导入。");
-  }
-  if (!(elements.analysisRequest.value || "").trim()) {
-    issues.push("还没有填写“本轮问题描述 / 分析目标”。");
-  }
+  if (!hasEvidenceReady()) issues.push("还没有任何资料或附件，请先完成资料导入。");
+  const hasProblemEvidence = (state.activeSessionDetail?.evidence || []).some((item) => item.kind === "imported_info");
+  if (!hasProblemEvidence) issues.push("还没有导入问题描述、测试报告、图片或日志。");
   if (issues.length) {
     state.lastMissingInfo = issues;
     elements.analysisStatus.textContent = issues.join(" ");
@@ -481,7 +478,7 @@ async function runAnalysis() {
     updateWorkflow("session", "success", `已读取会话 ${state.activeSessionId}。`);
     const data = await apiPost("/ai/analyze", {
       sessionId: state.activeSessionId,
-      requestText: elements.analysisRequest.value.trim(),
+      requestText: buildDefaultAnalysisPrompt(),
       deviceIp: state.activeSessionDetail?.deviceIp || "",
       captureSnapshot: false,
     });
@@ -522,56 +519,66 @@ function createSummaryField(label, id, value, type = "text", options = []) {
 }
 
 function normalizeListItems(items, fallbackText = "") {
-  if (Array.isArray(items) && items.length) {
-    return items.map((item) => String(item || "").trim()).filter(Boolean);
-  }
-  const text = safeText(fallbackText).trim();
+  if (Array.isArray(items) && items.length) return items.map((item) => String(item || "").trim()).filter(Boolean);
+  const text = String(fallbackText || "").trim();
   if (!text) return [""];
-  return text
-    .split(/\n+/)
-    .map((line) => line.replace(/^\s*[-\d.、]+\s*/, "").trim())
-    .filter(Boolean);
+  return text.split(/\n+/).map((line) => line.replace(/^\s*[-\d.、]+\s*/, "").trim()).filter(Boolean);
 }
 
-function textFromLayeredAnalysis(items = []) {
-  return items
-    .map((entry) => {
-      const layer = entry.layer || "未命名层";
-      const judgement = entry.judgement || "";
-      const why = entry.why ? `，原因：${entry.why}` : "";
-      return `${layer}：${judgement}${why}`;
-    })
-    .join("\n");
+function buildMergedRows(result) {
+  const fromRows = Array.isArray(result.layered_validation_rows) ? result.layered_validation_rows : [];
+  if (fromRows.length) return fromRows;
+  const layered = Array.isArray(result.layered_analysis) ? result.layered_analysis : [];
+  const validations = Array.isArray(result.validation_steps) ? result.validation_steps : [];
+  const max = Math.max(layered.length, validations.length, 1);
+  const rows = [];
+  for (let index = 0; index < max; index += 1) {
+    const layer = layered[index] || {};
+    const validation = validations[index] || {};
+    rows.push({
+      reason: [layer.layer || "", layer.judgement || "", layer.why || ""].filter(Boolean).join("："),
+      method: validation.instructions || validation.goal || "",
+      result: validation.expected_result || "",
+      owner: "",
+    });
+  }
+  return rows;
 }
 
-function textFromValidationSteps(items = []) {
-  return items
-    .map((entry, index) => `${index + 1}. ${entry.goal || entry.step_id || "验证步骤"}；动作：${entry.instructions || ""}；预期：${entry.expected_result || ""}`)
-    .join("\n");
-}
-
-function textFromPossibleCauses(items = []) {
-  return items
-    .map((entry, index) => `${index + 1}. ${entry.label || "可能原因"}；依据：${entry.reasoning || ""}；下一步：${entry.required_next_check || ""}`)
-    .join("\n");
-}
-
-function textFromSolution(result) {
-  const validations = (result.validation_steps || []).slice(0, 3).map((entry) => entry.instructions || entry.goal || "");
-  const commands = (result.suggested_commands_or_snippets || []).slice(0, 3).map((entry) => entry.content || "");
-  return [...validations, ...commands].filter(Boolean).join("\n");
-}
-
-function textFromLessons(result) {
-  const patterns = (result.related_assets?.reusable_patterns || []).map((item) => String(item));
-  const tags = (result.case_update_hint?.candidate_root_cause_tags || []).filter(Boolean);
-  return [...patterns, ...(tags.length ? [`候选标签：${tags.join(" / ")}`] : [])].join("\n");
+function createSectionHeader(title, key) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "section-header";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  wrapper.appendChild(heading);
+  const actions = document.createElement("div");
+  actions.className = "inline-actions mini-actions";
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "secondary-button";
+  editBtn.textContent = state.sectionEditState[key] ? "完成编辑" : "编辑";
+  editBtn.addEventListener("click", () => {
+    state.sectionEditState[key] = !state.sectionEditState[key];
+    renderReadableAnalysis(state.latestAnalysis);
+  });
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "danger-button";
+  clearBtn.textContent = "删除";
+  clearBtn.addEventListener("click", () => {
+    if (!window.confirm(`确定清空“${title}”吗？`)) return;
+    clearSectionContent(key);
+  });
+  actions.appendChild(editBtn);
+  actions.appendChild(clearBtn);
+  wrapper.appendChild(actions);
+  return wrapper;
 }
 
 function createEditableListSection(order, title, key, items, minRows = 2) {
   const section = document.createElement("section");
   section.className = "editable-analysis-section";
-  section.innerHTML = `<h4>${order} ${title}</h4>`;
+  section.appendChild(createSectionHeader(`${order} ${title}`, key));
   const list = document.createElement("div");
   list.className = "editable-list";
   const values = [...items];
@@ -584,6 +591,7 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
     textarea.rows = 3;
     textarea.value = value || "";
     textarea.dataset.listKey = key;
+    textarea.readOnly = !state.sectionEditState[key];
     row.appendChild(textarea);
     list.appendChild(row);
   });
@@ -591,10 +599,79 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
   return section;
 }
 
+function createMergedSection(rows) {
+  const section = document.createElement("section");
+  section.className = "editable-analysis-section";
+  section.appendChild(createSectionHeader("02-03 分层分析与验证方法", "layeredValidation"));
+  const table = document.createElement("div");
+  table.className = "merged-analysis-table";
+  table.innerHTML = `
+    <div class="merged-analysis-head">原因分析</div>
+    <div class="merged-analysis-head">验证方法</div>
+    <div class="merged-analysis-head">验证结果</div>
+    <div class="merged-analysis-head">责任人</div>
+  `;
+  const editable = state.sectionEditState.layeredValidation;
+  const values = [...rows];
+  while (values.length < 2) values.push({ reason: "", method: "", result: "", owner: "" });
+  values.forEach((row, index) => {
+    ["reason", "method", "result", "owner"].forEach((field) => {
+      const textarea = document.createElement("textarea");
+      textarea.rows = 3;
+      textarea.value = row[field] || "";
+      textarea.dataset.layeredRow = String(index);
+      textarea.dataset.layeredField = field;
+      textarea.readOnly = !editable;
+      table.appendChild(textarea);
+    });
+  });
+  section.appendChild(table);
+  return section;
+}
+
 function collectListField(key) {
   return Array.from(document.querySelectorAll(`textarea[data-list-key="${key}"]`))
     .map((node) => node.value.trim())
     .filter(Boolean);
+}
+
+function collectMergedRows() {
+  const map = new Map();
+  Array.from(document.querySelectorAll("textarea[data-layered-row]")).forEach((node) => {
+    const rowIndex = Number(node.dataset.layeredRow);
+    const field = node.dataset.layeredField;
+    if (!map.has(rowIndex)) map.set(rowIndex, { reason: "", method: "", result: "", owner: "" });
+    map.get(rowIndex)[field] = node.value.trim();
+  });
+  return [...map.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, value]) => value)
+    .filter((row) => Object.values(row).some(Boolean));
+}
+
+function clearSectionContent(key) {
+  if (!state.latestAnalysis) return;
+  const result = state.latestAnalysis.result;
+  if (key === "phenomenon") {
+    result.phenomenon_items = [];
+    result.phenomenon_summary = "";
+  } else if (key === "layeredValidation") {
+    result.layered_validation_rows = [];
+    result.layered_analysis_items = [];
+    result.validation_items = [];
+    result.layered_analysis_summary = "";
+    result.validation_summary = "";
+  } else if (key === "rootCause") {
+    result.root_cause_items = [];
+    result.root_cause_summary = "";
+  } else if (key === "solution") {
+    result.solution_items = [];
+    result.solution_summary = "";
+  } else if (key === "lessons") {
+    result.lessons_items = [];
+    result.lessons_summary = "";
+  }
+  renderReadableAnalysis(state.latestAnalysis);
 }
 
 function renderReadableAnalysis(analysis) {
@@ -615,18 +692,16 @@ function renderReadableAnalysis(analysis) {
   elements.analysisResult.appendChild(summaryGrid);
 
   const phenomenonItems = normalizeListItems(result.phenomenon_items, result.phenomenon_summary || "");
-  const layeredItems = normalizeListItems(result.layered_analysis_items, result.layered_analysis_summary || textFromLayeredAnalysis(result.layered_analysis || []));
-  const validationItems = normalizeListItems(result.validation_items, result.validation_summary || textFromValidationSteps(result.validation_steps || []));
-  const rootCauseItems = normalizeListItems(result.root_cause_items, result.root_cause_summary || textFromPossibleCauses(result.possible_causes || []));
-  const solutionItems = normalizeListItems(result.solution_items, result.solution_summary || textFromSolution(result));
-  const lessonsItems = normalizeListItems(result.lessons_items, result.lessons_summary || textFromLessons(result));
+  const mergedRows = buildMergedRows(result);
+  const rootCauseItems = normalizeListItems(result.root_cause_items, "");
+  const solutionItems = normalizeListItems(result.solution_items, "");
+  const lessonsItems = normalizeListItems(result.lessons_items, "");
 
   elements.analysisResult.appendChild(createEditableListSection("01", "现象", "phenomenon", phenomenonItems));
-  elements.analysisResult.appendChild(createEditableListSection("02", "分层分析", "layered", layeredItems));
-  elements.analysisResult.appendChild(createEditableListSection("03", "验证方法", "validation", validationItems));
-  elements.analysisResult.appendChild(createEditableListSection("04", "根因", "root-cause", rootCauseItems));
-  elements.analysisResult.appendChild(createEditableListSection("05", "解决方案", "solution", solutionItems));
-  elements.analysisResult.appendChild(createEditableListSection("06", "经验总结", "lessons", lessonsItems));
+  elements.analysisResult.appendChild(createMergedSection(mergedRows));
+  elements.analysisResult.appendChild(createEditableListSection("04", "根因", "rootCause", rootCauseItems, 1));
+  elements.analysisResult.appendChild(createEditableListSection("05", "解决方案", "solution", solutionItems, 1));
+  elements.analysisResult.appendChild(createEditableListSection("06", "经验总结", "lessons", lessonsItems, 1));
 }
 
 async function saveAnalysisSummary() {
@@ -639,16 +714,15 @@ async function saveAnalysisSummary() {
   result.priority = document.getElementById("summary-priority")?.value || "P1";
   result.risk_level = document.getElementById("summary-risk-level")?.value || "low";
   result.phenomenon_items = collectListField("phenomenon");
-  result.layered_analysis_items = collectListField("layered");
-  result.validation_items = collectListField("validation");
-  result.root_cause_items = collectListField("root-cause");
-  result.solution_items = collectListField("solution");
-  result.lessons_items = collectListField("lessons");
   result.phenomenon_summary = result.phenomenon_items.join("\n");
-  result.layered_analysis_summary = result.layered_analysis_items.join("\n");
-  result.validation_summary = result.validation_items.join("\n");
+  result.layered_validation_rows = collectMergedRows();
+  result.layered_analysis_summary = result.layered_validation_rows.map((row) => row.reason).filter(Boolean).join("\n");
+  result.validation_summary = result.layered_validation_rows.map((row) => `${row.method}${row.result ? ` -> ${row.result}` : ""}${row.owner ? ` @ ${row.owner}` : ""}`).filter(Boolean).join("\n");
+  result.root_cause_items = collectListField("rootCause");
   result.root_cause_summary = result.root_cause_items.join("\n");
+  result.solution_items = collectListField("solution");
   result.solution_summary = result.solution_items.join("\n");
+  result.lessons_items = collectListField("lessons");
   result.lessons_summary = result.lessons_items.join("\n");
   await apiPost(`/api/sessions/${state.activeSessionId}/analysis-summary`, {
     analysisId: state.latestAnalysis.id,
@@ -656,6 +730,15 @@ async function saveAnalysisSummary() {
   });
   elements.analysisStatus.textContent = "分析结果已保存。";
   elements.analysisStatus.classList.remove("error");
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadKnowledge()]);
+}
+
+async function deleteAnalysis(analysisId) {
+  requireSession();
+  if (!window.confirm("确定删除这条历史分析吗？")) return;
+  const response = await fetch(`/api/analyses/${analysisId}`, { method: "DELETE" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "delete failed");
   await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadKnowledge()]);
 }
 
@@ -703,9 +786,8 @@ function formatAnalysisForCompare(analysis) {
   const wrapper = document.createElement("article");
   wrapper.className = "compare-card";
   wrapper.appendChild(createListSection("现象", normalizeListItems(analysis.result?.phenomenon_items, analysis.result?.phenomenon_summary || "")));
-  wrapper.appendChild(createListSection("分层分析", normalizeListItems(analysis.result?.layered_analysis_items, analysis.result?.layered_analysis_summary || textFromLayeredAnalysis(analysis.result?.layered_analysis || []))));
-  wrapper.appendChild(createListSection("验证方法", normalizeListItems(analysis.result?.validation_items, analysis.result?.validation_summary || textFromValidationSteps(analysis.result?.validation_steps || []))));
-  wrapper.appendChild(createListSection("根因", normalizeListItems(analysis.result?.root_cause_items, analysis.result?.root_cause_summary || textFromPossibleCauses(analysis.result?.possible_causes || []))));
+  wrapper.appendChild(createListSection("分层分析与验证", (analysis.result?.layered_validation_rows || []).map((row) => `${row.reason || "无原因"} | ${row.method || "无方法"} | ${row.result || "无结果"} | ${row.owner || "未分配"}`)));
+  wrapper.appendChild(createListSection("根因", normalizeListItems(analysis.result?.root_cause_items, analysis.result?.root_cause_summary || "")));
   return wrapper;
 }
 
@@ -718,7 +800,7 @@ function renderCompareArea(analyses) {
   selected.forEach((analysis) => {
     const column = document.createElement("section");
     column.className = "compare-column";
-    column.innerHTML = `<h4>${analysis.createdAt}</h4><p class="helper">${analysis.requestText || ""}</p>`;
+    column.innerHTML = `<h4>${analysis.createdAt}</h4>`;
     column.appendChild(formatAnalysisForCompare(analysis));
     grid.appendChild(column);
   });
@@ -746,8 +828,24 @@ function renderAnalyses(analyses) {
       <td>${analysis.result?.priority || "P1"}</td>
       <td>${analysis.result?.risk_level || "low"}</td>
       <td class="summary-cell">${analysis.result?.phenomenon_summary || "无现象总结"}</td>
-      <td class="summary-cell">${analysis.requestText || ""}</td>
+      <td>
+        <div class="inline-actions mini-actions">
+          <button type="button" class="secondary-button" data-action="edit">编辑</button>
+          <button type="button" class="danger-button" data-action="delete">删除</button>
+        </div>
+      </td>
     `;
+    const editBtn = row.querySelector('[data-action="edit"]');
+    const deleteBtn = row.querySelector('[data-action="delete"]');
+    editBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      renderReadableAnalysis(analysis);
+      elements.analysisResult.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    deleteBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteAnalysis(analysis.id).catch(showGenericError);
+    });
     row.addEventListener("click", () => renderReadableAnalysis(analysis));
     const checkbox = row.querySelector("input[type='checkbox']");
     checkbox.checked = state.selectedCompareIds.includes(analysis.id);
@@ -776,9 +874,7 @@ function compareSelectedAnalyses() {
 async function loadKnowledge(keyword = "") {
   const data = await apiGet(`/knowledge/search${keyword ? `?q=${encodeURIComponent(keyword)}` : ""}`);
   state.knowledge = data.knowledge || [];
-  if (!state.selectedKnowledgeId && state.knowledge.length) {
-    state.selectedKnowledgeId = state.knowledge[0].id;
-  }
+  if (!state.selectedKnowledgeId && state.knowledge.length) state.selectedKnowledgeId = state.knowledge[0].id;
   renderKnowledge();
 }
 
@@ -813,7 +909,7 @@ function renderKnowledge() {
     });
   state.knowledge.forEach((item) => {
     const article = document.createElement("article");
-    article.className = `list-item selectable compact-row ${state.selectedKnowledgeId === item.id ? "active" : ""}`;
+    article.className = `list-item compact-row selectable ${state.selectedKnowledgeId === item.id ? "active" : ""}`;
     article.innerHTML = `
       <strong>${item.title}</strong>
       <span class="item-meta">${(item.tags || []).join(", ") || "无标签"} · ${item.updatedAt || ""}</span>
@@ -837,15 +933,14 @@ function renderKnowledge() {
 function applySelectedKnowledgeToAnalysis() {
   const detail = state.knowledge.find((item) => item.id === state.selectedKnowledgeId);
   if (!detail) throw new Error("请先在案例库里选择一条经验。");
-  const lines = [
+  const text = [
     `参考案例：${detail.title}`,
     `根因：${detail.rootCause || "无"}`,
     `解决方案：${detail.solution || "无"}`,
     `验证方法：${detail.validation || "无"}`,
-    `标签：${(detail.tags || []).join(", ") || "无"}`,
-  ];
-  const existing = elements.analysisRequest.value.trim();
-  elements.analysisRequest.value = existing ? `${existing}\n\n${lines.join("\n")}` : lines.join("\n");
+  ].join("\n");
+  elements.analysisStatus.textContent = text;
+  elements.analysisStatus.classList.remove("error");
   setCurrentView("analysis");
 }
 
