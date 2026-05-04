@@ -2,6 +2,15 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.14.0 - 2026-05-04
+
+- Rebuilt the `Analysis Center` around a novice-friendly three-stage flow: `问题输入与资料准备 -> AI 分析与参考库引导 -> 人工修正与执行`.
+- Moved the main problem statement / analysis target input to the top of the analysis page so users first describe the issue before triggering AI.
+- Added a guided onboarding strip in the analysis page to teach new users the expected operating order step by step.
+- Added an analysis-library preview area so AI guidance is visibly grounded in reusable knowledge entries, recent analyses, and existing testcases.
+- Reframed the lower analysis workflow section as manual execution and correction, making it clearer that engineers should validate and revise AI suggestions before closing a session.
+- Bumped the local workbench version to `v0.14.0`.
+
 ## v0.13.1 - 2026-05-04
 
 - Adjusted the `Overview` page back to a dashboard-style mixed layout instead of strict single-column stacking.

@@ -472,7 +472,7 @@ http://127.0.0.1:8000/
 
 这样用户不是直接“问 AI”，而是跟着页面流程推进问题定位，AI 在已有积累基础上给出摘要、引导和复用建议。
 
-### 11.2.3 四页面结构（v0.13.1 起）
+### 11.2.3 四页面结构（v0.14.0 起）
 
 当前本地 Web 已进一步对齐 `Embedded Evidence Workbench Web Spec v1.0`，左侧固定导航变成 4 个页面：
 
@@ -490,13 +490,12 @@ http://127.0.0.1:8000/
    - `Test Results Table`
    - 保留自动串口抓取、手工粘贴日志和导入串口文件
 3. `Analysis Center`
-   - `Evidence Panel`
-   - `Workflow Navigation`
-   - `Step Content`
-   - `AI Assistant`
+   - `01. 问题输入与资料准备`
+   - `02. AI 分析与参考库引导`
+   - `03. 人工修正与执行`
    - `分析结果`
    - `历史分析`
-   - 严格按“先证据、再步骤、再引导、再结果”的思维顺序从上往下排列
+   - 严格按“先说清问题与资料，再看 AI 建议，再人工执行回填”的顺序从上往下排列
 4. `Library`
    - 搜索知识条目
    - 标签云快速筛选
@@ -519,6 +518,14 @@ http://127.0.0.1:8000/
 - `Knowledge` 用来承接已经完成的问题闭环，进入可复用知识库
 - `Overview` 保持 dashboard 风格的横竖结合总览布局
 - `Test Center / Analysis Center / Library` 继续采用从上到下的单列信息流，降低横向跳读成本
+
+其中 `Analysis Center` 的当前操作顺序固定为：
+
+1. 在页首写清本轮问题描述 / 分析目标
+2. 导入客户资料、现场说明、日志和抓拍等证据
+3. 查看 AI 基于资料、历史经验和测试库给出的引导
+4. 人工按步骤执行、修正、回填结果
+5. 最后保存分析摘要并沉淀到知识库
 
 ### 11.2.4 规范化 API
 
@@ -567,6 +574,8 @@ http://127.0.0.1:8000/
 - 当前结构化分析还会基于开放资产库输出 `layered_analysis / workflow_guidance / related_assets`
 - 当前 Analysis Center 会先校验证据是否齐全；如果没有证据或没有现象描述，AI 分析不会启动
 - 当前 AI Guidance 会按逻辑顺序显示：缺失输入、证据清单、推荐测试、流程清单、可复用资产、鱼骨图、思维导图
+- 当前 Analysis Center 顶部会先展示“新手操作顺序”，方便新手按图索骥地学习、分析和定位
+- 当前 Analysis Center 会在 AI 区域提前展示可参考的知识条目、测试用例和本 Session 最近分析，帮助用户理解 AI 的参考依据
 - 当前 Analysis Center 已支持把步骤数据保存到 `SessionStep`
 - 当前 Library 已支持从当前 Session 自动生成 Knowledge 条目
 

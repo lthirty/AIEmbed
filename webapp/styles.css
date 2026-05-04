@@ -575,6 +575,29 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
   gap: 10px;
 }
 
+.guide-strip {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.guide-step,
+.flow-panel {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.guide-step {
+  padding: 14px 16px;
+}
+
+.guide-step strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent-2);
+}
+
 .tag-chip {
   padding: 8px 14px;
   cursor: pointer;

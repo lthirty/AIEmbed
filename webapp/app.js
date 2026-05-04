@@ -72,6 +72,8 @@ const elements = {
   saveStepBtn: document.getElementById("save-step-btn"),
   markStepDoneBtn: document.getElementById("mark-step-done-btn"),
   stepSaveResult: document.getElementById("step-save-result"),
+  analysisPlaybook: document.getElementById("analysis-playbook"),
+  analysisLibraryPreview: document.getElementById("analysis-library-preview"),
   analysisRequest: document.getElementById("analysis-request"),
   captureBeforeAnalyze: document.getElementById("capture-before-analyze"),
   suggestMissingBtn: document.getElementById("suggest-missing-btn"),
@@ -455,6 +457,7 @@ async function loadSessionDetail(sessionId) {
   renderStepForm();
   renderEvidencePreview();
   renderAnalyses(data.analyses || []);
+  renderAnalysisLibraryPreview();
 }
 
 function renderStageNavigation() {
@@ -477,6 +480,50 @@ function renderStageNavigation() {
     });
     elements.sessionStageNav.appendChild(button);
   });
+}
+
+function renderAnalysisPlaybook() {
+  elements.analysisPlaybook.innerHTML = `
+    <h4>新手操作顺序</h4>
+    <ol class="checklist-list">
+      <li class="checklist-item">
+        <strong>1. 先把问题说清楚</strong>
+        <p>在上面的“本轮问题描述 / 分析目标”里写清现象、影响范围、触发条件，以及你当前最想定位的问题。</p>
+      </li>
+      <li class="checklist-item">
+        <strong>2. 先导入资料和证据</strong>
+        <p>优先导入客户文档、规格说明、串口日志、现场说明和抓拍。这些内容会成为 AI 和参考库分析的依据。</p>
+      </li>
+      <li class="checklist-item">
+        <strong>3. 先看 AI 给出的顺序和建议</strong>
+        <p>重点关注缺失信息、推荐测试、验证步骤和参考经验，不要直接跳到根因结论。</p>
+      </li>
+      <li class="checklist-item">
+        <strong>4. 人工执行并回填</strong>
+        <p>按下方流程一步步执行，把人工判断、实测结果和修正意见写回，最后沉淀成可复用经验。</p>
+      </li>
+    </ol>
+  `;
+}
+
+function renderAnalysisLibraryPreview() {
+  elements.analysisLibraryPreview.innerHTML = "";
+  const blocks = [];
+  if (state.knowledge.length) {
+    blocks.push(createListSection("优先参考的经验条目", state.knowledge.slice(0, 5).map((item) => `${item.title} · ${(item.tags || []).join(", ") || "无标签"}`)));
+  }
+  if (state.testCases.length) {
+    blocks.push(createListSection("可复用测试用例", state.testCases.slice(0, 5).map((item) => `${item.caseCode} · ${item.name} · ${item.category || "未分类"}`)));
+  }
+  const recentAnalyses = state.activeSessionDetail?.analyses || [];
+  if (recentAnalyses.length) {
+    blocks.push(createListSection("本 Session 最近分析", recentAnalyses.slice(0, 3).map((item) => item.result?.phenomenon_summary || item.requestText || item.createdAt)));
+  }
+  if (!blocks.length) {
+    elements.analysisLibraryPreview.innerHTML = '<p class="helper">当前还没有可参考的经验条目或测试用例，建议先完成一次分析并沉淀。</p>';
+    return;
+  }
+  blocks.forEach((block) => elements.analysisLibraryPreview.appendChild(block));
 }
 
 function getCurrentStepState() {
@@ -604,6 +651,7 @@ async function loadTestCases() {
   const data = await apiGet("/testcase/list");
   state.testCases = data.testcases || [];
   renderTestCases();
+  renderAnalysisLibraryPreview();
 }
 
 function renderTestCases() {
@@ -1167,6 +1215,7 @@ async function loadKnowledge(keyword = "") {
     state.selectedKnowledgeId = state.knowledge[0].id;
   }
   renderKnowledge();
+  renderAnalysisLibraryPreview();
 }
 
 function renderKnowledge() {
@@ -1286,6 +1335,7 @@ elements.workflowStage.addEventListener("change", () => {
 });
 
 resetWorkflow();
+renderAnalysisPlaybook();
 elements.testCaseSteps.value = defaultTestStepsJson();
 Promise.all([loadConfig(), loadOverview(), loadSessions(), loadTestCases(), loadTestRuns(), loadSerialPorts(), loadKnowledge(), pollSerialStatus()]).catch(showGenericError);
 startSerialPolling();

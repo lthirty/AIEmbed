@@ -251,9 +251,16 @@
         <section id="view-analysis" class="view-page">
           <section class="panel">
             <div class="panel-head">
-              <h3>Evidence Panel</h3>
-              <span class="helper">先完成资料、日志、导入信息和抓拍，再进入 AI 分析</span>
+              <h3>01. 问题输入与资料准备</h3>
+              <span class="helper">先输入问题、导入参考资料和证据，再让 AI 基于参考库给出分析思路</span>
             </div>
+            <section class="guide-strip">
+              <div class="guide-step"><strong>Step 1</strong><span>输入问题现象与分析目标</span></div>
+              <div class="guide-step"><strong>Step 2</strong><span>导入资料、日志、抓拍等证据</span></div>
+              <div class="guide-step"><strong>Step 3</strong><span>让 AI 结合参考库生成分析与验证建议</span></div>
+              <div class="guide-step"><strong>Step 4</strong><span>人工执行、修正并沉淀结论</span></div>
+            </section>
+            <label>本轮问题描述 / 分析目标<textarea id="analysis-request" rows="5" placeholder="例如：客户反馈设备偶发重启。请结合规格文档、串口日志和历史经验，按定位顺序分析最可能原因并给出下一步验证动作。"></textarea></label>
             <div class="grid-three">
               <article class="stack-card">
                 <h4>资料导入</h4>
@@ -287,32 +294,11 @@
 
           <section class="panel">
             <div class="panel-head">
-              <h3>Workflow Navigation</h3>
-              <span class="helper">Step N 未完成前，禁止进入 N+1</span>
+              <h3>02. AI 分析与参考库引导</h3>
+              <span class="helper">AI 会参考你导入的资料、当前证据、历史经验和测试库，先给分析与验证顺序</span>
             </div>
-            <div id="session-stage-nav" class="stage-nav"></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <h3>Step Content</h3>
-              <span id="step-form-title" class="helper">当前步骤数据</span>
-            </div>
-            <div id="stage-guidance" class="guidance-card"></div>
-            <div id="step-form-fields" class="step-form"></div>
-            <div class="inline-actions">
-              <button id="save-step-btn" type="button">保存当前步骤</button>
-              <button id="mark-step-done-btn" type="button">标记本步骤完成</button>
-            </div>
-            <p id="step-save-result" class="helper">当前步骤的数据会写入 SessionStep。</p>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <h3>AI Assistant</h3>
-              <span class="helper">自动检测缺失信息、推荐测试用例、给出下一步建议</span>
-            </div>
-            <label>本轮分析目标<textarea id="analysis-request" rows="5" placeholder="例如：根据当前现象、日志和资料，分析最可能原因并给出下一步验证顺序。"></textarea></label>
+            <div id="analysis-playbook" class="guidance-card"></div>
+            <div id="analysis-library-preview" class="analysis-readable"></div>
             <label class="checkbox-row"><input id="capture-before-analyze" type="checkbox"><span>分析前自动抓拍一张证据图</span></label>
             <div class="inline-actions">
               <button id="suggest-missing-btn" type="button">检测缺失信息</button>
@@ -329,6 +315,33 @@
                 <span class="helper">缺失信息 / 测试推荐 / 下一步动作 / 可视化分析</span>
               </div>
               <div id="analysis-guidance" class="analysis-readable"></div>
+            </section>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>03. 人工修正与执行</h3>
+              <span class="helper">按照 AI 建议执行，再把人工判断、验证结果和修正内容写回</span>
+            </div>
+            <section class="subpanel flow-panel">
+              <div class="panel-head">
+                <h4>Workflow Navigation</h4>
+                <span class="helper">Step N 未完成前，禁止进入 N+1</span>
+              </div>
+              <div id="session-stage-nav" class="stage-nav"></div>
+            </section>
+            <section class="subpanel flow-panel">
+              <div class="panel-head">
+                <h4>人工修正 / 执行记录</h4>
+                <span id="step-form-title" class="helper">当前步骤数据</span>
+              </div>
+              <div id="stage-guidance" class="guidance-card"></div>
+              <div id="step-form-fields" class="step-form"></div>
+              <div class="inline-actions">
+                <button id="save-step-btn" type="button">保存当前步骤</button>
+                <button id="mark-step-done-btn" type="button">标记本步骤完成</button>
+              </div>
+              <p id="step-save-result" class="helper">这里用于人工修正 AI 结论、记录执行动作和回填结果。</p>
             </section>
           </section>
 
