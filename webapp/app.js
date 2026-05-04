@@ -37,6 +37,13 @@ const elements = {
   infoFile: document.getElementById("info-file"),
   saveInfoBtn: document.getElementById("save-info-btn"),
   infoResult: document.getElementById("info-result"),
+  serialPortSelect: document.getElementById("serial-port-select"),
+  serialBaudInput: document.getElementById("serial-baud-input"),
+  refreshSerialPortsBtn: document.getElementById("refresh-serial-ports-btn"),
+  startSerialCaptureBtn: document.getElementById("start-serial-capture-btn"),
+  stopSerialCaptureBtn: document.getElementById("stop-serial-capture-btn"),
+  serialStatusText: document.getElementById("serial-status-text"),
+  serialLiveOutput: document.getElementById("serial-live-output"),
   suggestMissingBtn: document.getElementById("suggest-missing-btn"),
   analyzeBtn: document.getElementById("analyze-btn"),
   analysisStatus: document.getElementById("analysis-status"),
@@ -71,6 +78,9 @@ const state = {
   selectedKnowledgeId: "",
   lastMissingInfo: [],
   rowEditState: {},
+  serialPorts: [],
+  serialStatus: null,
+  serialPollTimer: null,
   mergedColumnWidths: {
     category: 160,
     owner: 140,
@@ -396,9 +406,33 @@ function renderEvidenceList() {
     const label = [item.title || item.fileName || "未命名资料", item.fileName || ""]
       .filter((value, index, array) => value && array.indexOf(value) === index)
       .join(" · ");
-    article.innerHTML = `
-      <span class="evidence-token-label" title="${label}">${label}</span>
-    `;
+    if (item.isImage && item.fileUrl) {
+      const previewLink = document.createElement("a");
+      previewLink.href = item.fileUrl;
+      previewLink.target = "_blank";
+      previewLink.rel = "noopener noreferrer";
+      previewLink.className = "evidence-preview-link";
+      const preview = document.createElement("img");
+      preview.src = item.fileUrl;
+      preview.alt = label;
+      preview.className = "evidence-thumb";
+      previewLink.appendChild(preview);
+      article.appendChild(previewLink);
+    }
+    const browseLink = document.createElement("a");
+    browseLink.href = item.fileUrl || "#";
+    browseLink.target = "_blank";
+    browseLink.rel = "noopener noreferrer";
+    browseLink.className = "evidence-token-label";
+    browseLink.title = label;
+    browseLink.textContent = label;
+    if (!item.fileUrl) {
+      browseLink.removeAttribute("href");
+      browseLink.removeAttribute("target");
+      browseLink.removeAttribute("rel");
+      browseLink.classList.add("disabled");
+    }
+    article.appendChild(browseLink);
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "danger-button";
@@ -555,9 +589,47 @@ function isRowEditing(section, index) {
   return !!state.rowEditState[rowEditKey(section, index)];
 }
 
-function toggleRowEdit(section, index) {
+function syncAnalysisDraftToState() {
+  if (!state.latestAnalysis?.result) return;
+  const result = state.latestAnalysis.result;
+  result.test_time = document.getElementById("summary-test-time")?.value || result.test_time || "";
+  result.device_model = document.getElementById("summary-device-model")?.value || result.device_model || "";
+  result.serial_number = document.getElementById("summary-serial-number")?.value || result.serial_number || "";
+  result.priority = document.getElementById("summary-priority")?.value || result.priority || "P1";
+  result.risk_level = document.getElementById("summary-risk-level")?.value || result.risk_level || "low";
+  result.phenomenon_items = collectListField("phenomenon");
+  result.phenomenon_summary = result.phenomenon_items.filter(Boolean).join("\n");
+  result.layered_validation_rows = collectMergedRows();
+  result.layered_analysis_summary = result.layered_validation_rows.map((row) => row.reason).filter(Boolean).join("\n");
+  result.validation_summary = result.layered_validation_rows.map((row) => `${row.method}${row.result ? ` -> ${row.result}` : ""}${row.owner ? ` @ ${row.owner}` : ""}`).filter(Boolean).join("\n");
+  result.root_cause_items = collectListField("rootCause");
+  result.root_cause_summary = result.root_cause_items.filter(Boolean).join("\n");
+  result.solution_items = collectListField("solution");
+  result.solution_summary = result.solution_items.filter(Boolean).join("\n");
+  result.lessons_items = collectListField("lessons");
+  result.lessons_summary = result.lessons_items.filter(Boolean).join("\n");
+}
+
+async function persistLatestAnalysisDraft(silent = false) {
+  if (!state.activeSessionId || !state.latestAnalysis) return;
+  syncAnalysisDraftToState();
+  await apiPost(`/api/sessions/${state.activeSessionId}/analysis-summary`, {
+    analysisId: state.latestAnalysis.id,
+    result: state.latestAnalysis.result,
+  });
+  if (!silent) {
+    elements.analysisStatus.textContent = "分析结果已保存。";
+    elements.analysisStatus.classList.remove("error");
+  }
+}
+
+async function toggleRowEdit(section, index) {
   const key = rowEditKey(section, index);
-  state.rowEditState[key] = !state.rowEditState[key];
+  const wasEditing = !!state.rowEditState[key];
+  if (wasEditing) {
+    await persistLatestAnalysisDraft(true);
+  }
+  state.rowEditState[key] = !wasEditing;
   renderReadableAnalysis(state.latestAnalysis);
 }
 
@@ -595,7 +667,9 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
         lessons: "lessons_items",
       };
       const fieldName = map[key];
-      result[fieldName] = [...normalizeListItems(result[fieldName], ""), ""];
+      const current = Array.isArray(result[fieldName]) ? result[fieldName].map((item) => String(item ?? "")) : normalizeListItems(result[fieldName], "");
+      result[fieldName] = [...current, ""];
+      state.rowEditState[rowEditKey(key, current.length)] = true;
       renderReadableAnalysis(state.latestAnalysis);
     },
   }));
@@ -638,7 +712,7 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
     editBtn.type = "button";
     editBtn.className = "secondary-button";
     editBtn.textContent = isRowEditing(key, index) ? "完成" : "编辑";
-    editBtn.addEventListener("click", () => toggleRowEdit(key, index));
+    editBtn.addEventListener("click", () => toggleRowEdit(key, index).catch(showGenericError));
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "danger-button";
@@ -654,7 +728,7 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
         lessons: "lessons_items",
       };
       const fieldName = map[key];
-      const nextItems = [...normalizeListItems(result[fieldName], "")];
+      const nextItems = Array.isArray(result[fieldName]) ? result[fieldName].map((item) => String(item ?? "")) : normalizeListItems(result[fieldName], "");
       nextItems.splice(index, 1);
       result[fieldName] = nextItems;
       delete state.rowEditState[rowEditKey(key, index)];
@@ -709,6 +783,7 @@ function createMergedSection(rows) {
       const result = state.latestAnalysis.result;
       const nextRows = [...buildMergedRows(result), { category: "", owner: "", reason: "", method: "", result: "" }];
       result.layered_validation_rows = nextRows;
+      state.rowEditState[rowEditKey("layeredValidation", nextRows.length - 1)] = true;
       renderReadableAnalysis(state.latestAnalysis);
     },
   }));
@@ -746,38 +821,43 @@ function createMergedSection(rows) {
   const tbody = document.createElement("tbody");
   const values = [...rows];
   while (values.length < 2) values.push({ category: "", owner: "", reason: "", method: "", result: "" });
-  const builtinCategories = ["", "硬件", "软件", "固件", "OS", "__custom__"];
+  const builtinCategories = ["", "硬件", "软件", "固件", "OS"];
   values.forEach((row, index) => {
     const editable = isRowEditing("layeredValidation", index);
     const tr = document.createElement("tr");
     const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
     const categorySelect = document.createElement("select");
-    const customCategory = row.category && !["硬件", "软件", "固件", "OS"].includes(row.category) ? row.category : "";
-    const selectedCategory = customCategory ? "__custom__" : (row.category || "");
-    builtinCategories.forEach((value) => {
+    const availableCategories = [...new Set([...builtinCategories, ...buildMergedRows(state.latestAnalysis?.result || {}).map((item) => item.category).filter(Boolean)])];
+    availableCategories.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value === "" ? "未分类" : value === "__custom__" ? "自定义" : value;
+      option.textContent = value === "" ? "未分类" : value;
       categorySelect.appendChild(option);
     });
-    categorySelect.value = selectedCategory;
+    const customOption = document.createElement("option");
+    customOption.value = "__custom__";
+    customOption.textContent = "自定义...";
+    categorySelect.appendChild(customOption);
+    categorySelect.value = row.category && availableCategories.includes(row.category) ? row.category : (row.category ? row.category : "");
     categorySelect.disabled = !editable;
     categorySelect.dataset.layeredRow = String(index);
     categorySelect.dataset.layeredField = "category";
-    categoryCell.appendChild(categorySelect);
-    const customInput = document.createElement("input");
-    customInput.type = "text";
-    customInput.placeholder = "输入自定义分类";
-    customInput.value = customCategory;
-    customInput.dataset.layeredRow = String(index);
-    customInput.dataset.layeredField = "categoryCustom";
-    customInput.readOnly = !editable;
-    customInput.className = selectedCategory === "__custom__" ? "custom-category-input" : "custom-category-input hidden";
     categorySelect.addEventListener("change", () => {
-      customInput.classList.toggle("hidden", categorySelect.value !== "__custom__");
+      if (categorySelect.value !== "__custom__") return;
+      const customValue = window.prompt("输入自定义分类名称", row.category || "");
+      if (customValue && customValue.trim()) {
+        const nextValue = customValue.trim();
+        const option = document.createElement("option");
+        option.value = nextValue;
+        option.textContent = nextValue;
+        categorySelect.insertBefore(option, customOption);
+        categorySelect.value = nextValue;
+      } else {
+        categorySelect.value = row.category || "";
+      }
     });
-    categoryCell.appendChild(customInput);
+    categoryCell.appendChild(categorySelect);
     tr.appendChild(categoryCell);
 
     ["owner", "reason", "method", "result"].forEach((field) => {
@@ -800,7 +880,7 @@ function createMergedSection(rows) {
     editBtn.type = "button";
     editBtn.className = "secondary-button";
     editBtn.textContent = editable ? "完成" : "编辑";
-    editBtn.addEventListener("click", () => toggleRowEdit("layeredValidation", index));
+    editBtn.addEventListener("click", () => toggleRowEdit("layeredValidation", index).catch(showGenericError));
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "danger-button";
@@ -837,18 +917,12 @@ function collectMergedRows() {
   Array.from(document.querySelectorAll("[data-layered-row]")).forEach((node) => {
     const rowIndex = Number(node.dataset.layeredRow);
     const field = node.dataset.layeredField;
-    if (!map.has(rowIndex)) map.set(rowIndex, { category: "", owner: "", reason: "", method: "", result: "", categoryCustom: "" });
+    if (!map.has(rowIndex)) map.set(rowIndex, { category: "", owner: "", reason: "", method: "", result: "" });
     map.get(rowIndex)[field] = node.value.trim();
   });
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([, value]) => ({
-      category: value.category === "__custom__" ? value.categoryCustom : value.category,
-      owner: value.owner,
-      reason: value.reason,
-      method: value.method,
-      result: value.result,
-    }))
+    .map(([, value]) => ({ category: value.category, owner: value.owner, reason: value.reason, method: value.method, result: value.result }))
     .filter((row) => Object.values(row).some(Boolean));
 }
 
@@ -869,11 +943,11 @@ function renderReadableAnalysis(analysis) {
   summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", result.risk_level || "low", "select", ["low", "medium", "high", "critical"]));
   elements.analysisResult.appendChild(summaryGrid);
 
-  const phenomenonItems = normalizeListItems(result.phenomenon_items, result.phenomenon_summary || "");
+  const phenomenonItems = Array.isArray(result.phenomenon_items) ? result.phenomenon_items.map((item) => String(item ?? "")) : normalizeListItems(result.phenomenon_items, result.phenomenon_summary || "");
   const mergedRows = buildMergedRows(result);
-  const rootCauseItems = normalizeListItems(result.root_cause_items, "");
-  const solutionItems = normalizeListItems(result.solution_items, "");
-  const lessonsItems = normalizeListItems(result.lessons_items, "");
+  const rootCauseItems = Array.isArray(result.root_cause_items) ? result.root_cause_items.map((item) => String(item ?? "")) : normalizeListItems(result.root_cause_items, "");
+  const solutionItems = Array.isArray(result.solution_items) ? result.solution_items.map((item) => String(item ?? "")) : normalizeListItems(result.solution_items, "");
+  const lessonsItems = Array.isArray(result.lessons_items) ? result.lessons_items.map((item) => String(item ?? "")) : normalizeListItems(result.lessons_items, "");
 
   elements.analysisResult.appendChild(createEditableListSection("01", "现象", "phenomenon", phenomenonItems));
   elements.analysisResult.appendChild(createMergedSection(mergedRows));
@@ -885,30 +959,123 @@ function renderReadableAnalysis(analysis) {
 async function saveAnalysisSummary() {
   requireSession();
   if (!state.latestAnalysis) throw new Error("当前没有可保存的分析结果。");
-  const result = { ...state.latestAnalysis.result };
-  result.test_time = document.getElementById("summary-test-time")?.value || "";
-  result.device_model = document.getElementById("summary-device-model")?.value || "";
-  result.serial_number = document.getElementById("summary-serial-number")?.value || "";
-  result.priority = document.getElementById("summary-priority")?.value || "P1";
-  result.risk_level = document.getElementById("summary-risk-level")?.value || "low";
-  result.phenomenon_items = collectListField("phenomenon");
-  result.phenomenon_summary = result.phenomenon_items.join("\n");
-  result.layered_validation_rows = collectMergedRows();
-  result.layered_analysis_summary = result.layered_validation_rows.map((row) => row.reason).filter(Boolean).join("\n");
-  result.validation_summary = result.layered_validation_rows.map((row) => `${row.method}${row.result ? ` -> ${row.result}` : ""}${row.owner ? ` @ ${row.owner}` : ""}`).filter(Boolean).join("\n");
-  result.root_cause_items = collectListField("rootCause");
-  result.root_cause_summary = result.root_cause_items.join("\n");
-  result.solution_items = collectListField("solution");
-  result.solution_summary = result.solution_items.join("\n");
-  result.lessons_items = collectListField("lessons");
-  result.lessons_summary = result.lessons_items.join("\n");
-  await apiPost(`/api/sessions/${state.activeSessionId}/analysis-summary`, {
-    analysisId: state.latestAnalysis.id,
-    result,
-  });
+  await persistLatestAnalysisDraft();
   elements.analysisStatus.textContent = "分析结果已保存。";
   elements.analysisStatus.classList.remove("error");
   await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadKnowledge()]);
+}
+
+function renderSerialLiveOutput() {
+  const status = state.serialStatus || {};
+  if (!state.activeSessionDetail) {
+    elements.serialLiveOutput.value = "";
+    return;
+  }
+  const serialEvidence = (state.activeSessionDetail.evidence || []).find((item) => item.id === status.evidenceId)
+    || (state.activeSessionDetail.evidence || []).find((item) => item.kind === "serial_log");
+  const lines = String(serialEvidence?.contentText || "").split(/\r?\n/).filter(Boolean);
+  elements.serialLiveOutput.value = lines.slice(-10).join("\n");
+}
+
+async function loadSerialPorts() {
+  const data = await apiGet("/api/serial/ports");
+  state.serialPorts = data.ports || [];
+  elements.serialPortSelect.innerHTML = "";
+  state.serialPorts.forEach((port) => {
+    const option = document.createElement("option");
+    option.value = port.device;
+    option.textContent = `${port.device} · ${port.description || port.hwid || ""}`;
+    elements.serialPortSelect.appendChild(option);
+  });
+  if (!state.serialPorts.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "未检测到串口";
+    elements.serialPortSelect.appendChild(option);
+  }
+}
+
+function renderSerialStatus() {
+  const status = state.serialStatus || {};
+  if (status.running) {
+    elements.serialStatusText.textContent = `采集中：${status.port} @ ${status.baud} · ${status.lines || 0} 行 · ${status.bytes || 0} bytes`;
+  } else if (status.lastError) {
+    elements.serialStatusText.textContent = `异常：${status.lastError}`;
+  } else {
+    elements.serialStatusText.textContent = "未启动";
+  }
+  renderSerialLiveOutput();
+}
+
+async function pollSerialStatus() {
+  try {
+    const data = await apiGet("/api/serial/status");
+    state.serialStatus = data.status || {};
+    renderSerialStatus();
+    if (state.serialStatus.running && state.activeSessionId && state.serialStatus.sessionId === state.activeSessionId) {
+      await loadSessionDetail(state.activeSessionId);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function ensureSerialPolling() {
+  if (state.serialPollTimer) return;
+  state.serialPollTimer = window.setInterval(() => {
+    pollSerialStatus().catch(console.error);
+  }, 1500);
+}
+
+async function startSerialCapture() {
+  requireSession();
+  const port = elements.serialPortSelect.value;
+  if (!port) throw new Error("请先选择串口。");
+  const baud = Number(elements.serialBaudInput.value || "115200");
+  const data = await apiPost("/api/serial/start", { sessionId: state.activeSessionId, port, baud });
+  state.serialStatus = data.status || {};
+  renderSerialStatus();
+  await loadSessionDetail(state.activeSessionId);
+}
+
+async function stopSerialCapture() {
+  const data = await apiPost("/api/serial/stop", {});
+  state.serialStatus = data.status || {};
+  renderSerialStatus();
+  if (state.activeSessionId) {
+    await loadSessionDetail(state.activeSessionId);
+  }
+}
+
+function enhanceCollapsibleSections() {
+  document.querySelectorAll(".panel, .stack-card, .subpanel-inline").forEach((container) => {
+    if (container.dataset.collapsibleReady === "1") return;
+    let head = container.querySelector(":scope > .panel-head");
+    if (!head) {
+      const title = container.querySelector(":scope > h4, :scope > h5");
+      if (!title) return;
+      head = document.createElement("div");
+      head.className = "panel-head collapsible-head";
+      title.replaceWith(head);
+      head.appendChild(title);
+    }
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "collapse-toggle";
+    toggle.textContent = "收起";
+    const body = document.createElement("div");
+    body.className = "collapsible-body";
+    const children = Array.from(container.children).filter((child) => child !== head);
+    children.forEach((child) => body.appendChild(child));
+    container.appendChild(body);
+    head.appendChild(toggle);
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const collapsed = container.classList.toggle("collapsed");
+      toggle.textContent = collapsed ? "展开" : "收起";
+    });
+    container.dataset.collapsibleReady = "1";
+  });
 }
 
 async function deleteAnalysis(analysisId) {
@@ -1151,9 +1318,14 @@ function bindEvents() {
       showGenericError(error);
     }
   });
+  elements.refreshSerialPortsBtn.addEventListener("click", () => loadSerialPorts().catch(showGenericError));
+  elements.startSerialCaptureBtn.addEventListener("click", () => startSerialCapture().catch(showGenericError));
+  elements.stopSerialCaptureBtn.addEventListener("click", () => stopSerialCapture().catch(showGenericError));
 }
 
 bindEvents();
+enhanceCollapsibleSections();
 resetWorkflow();
 setCurrentView("analysis");
-Promise.all([loadConfig(), loadOverview(), loadSessions(), loadKnowledge()]).catch(showGenericError);
+ensureSerialPolling();
+Promise.all([loadConfig(), loadOverview(), loadSessions(), loadKnowledge(), loadSerialPorts(), pollSerialStatus()]).catch(showGenericError);

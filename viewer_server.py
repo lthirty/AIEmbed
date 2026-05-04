@@ -1,6 +1,7 @@
 import base64
 import cgi
 import json
+import mimetypes
 import os
 import re
 import socket
@@ -21,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.18.1"
+APP_VERSION = "v0.19.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -474,14 +475,20 @@ def session_to_dict(row: sqlite3.Row) -> dict:
 
 
 def evidence_to_dict(row: sqlite3.Row) -> dict:
+    file_name = row["file_name"] or ""
+    file_path = row["file_path"] or ""
+    suffix = Path(file_name).suffix.lower()
+    is_image = suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
     return {
         "id": row["id"],
         "sessionId": row["session_id"],
         "kind": row["kind"],
         "title": row["title"],
         "contentText": row["content_text"],
-        "fileName": row["file_name"],
-        "filePath": row["file_path"],
+        "fileName": file_name,
+        "filePath": file_path,
+        "fileUrl": f"/api/evidence/{row['id']}/file" if file_path else "",
+        "isImage": is_image,
         "meta": json.loads(row["meta_json"] or "{}"),
         "createdAt": row["created_at"],
     }
@@ -751,6 +758,22 @@ def delete_analysis(analysis_id: str) -> str:
     if session_id:
         write_session_markdown(session_id)
     return session_id
+
+
+def get_evidence_file_info(evidence_id: str) -> tuple[Path, str]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT file_name, file_path FROM evidence WHERE id = ?", (evidence_id,)).fetchone()
+        if not row:
+            raise KeyError("evidence not found")
+        file_path = Path((row["file_path"] or "").strip())
+        if not file_path:
+            raise FileNotFoundError("evidence file not found")
+        if not file_path.exists():
+            raise FileNotFoundError("evidence file not found")
+        return file_path, row["file_name"] or file_path.name
+    finally:
+        conn.close()
 
 
 def list_sessions() -> list[dict]:
@@ -2015,6 +2038,18 @@ class ViewerHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_file(self, file_path: Path, download_name: str = "") -> None:
+        content = file_path.read_bytes()
+        content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        if download_name:
+            quoted = urllib.parse.quote(download_name)
+            self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{quoted}")
+        self.end_headers()
+        self.wfile.write(content)
+
     def parse_json_body(self) -> dict:
         content_length = int(self.headers.get("Content-Length", "0"))
         raw_body = self.rfile.read(content_length)
@@ -2117,6 +2152,23 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json(200, {"evidence": payload.get("evidence", [])})
             except KeyError:
                 self.send_json(404, {"error": "session not found"})
+            return
+
+        if path.startswith("/api/evidence/") and path.endswith("/file"):
+            parts = path.split("/")
+            if len(parts) < 5 or not parts[3]:
+                self.send_json(400, {"error": "evidence id is required"})
+                return
+            evidence_id = parts[3]
+            try:
+                file_path, file_name = get_evidence_file_info(evidence_id)
+                self.send_file(file_path, file_name)
+            except KeyError:
+                self.send_json(404, {"error": "evidence not found"})
+            except FileNotFoundError as exc:
+                self.send_json(404, {"error": str(exc)})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
             return
 
         if path.startswith("/api/sessions/"):

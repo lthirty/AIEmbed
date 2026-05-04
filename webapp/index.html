@@ -142,6 +142,26 @@
               <label>附件<input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
               <button id="save-info-btn" type="button">导入问题信息</button>
               <p id="info-result" class="helper">这里可导入测试报告、图片、日志或补充问题说明。</p>
+              <div class="serial-capture-card">
+                <div class="panel-head compact-head">
+                  <h5>串口 Log 抓取</h5>
+                  <span id="serial-status-text" class="helper">未启动</span>
+                </div>
+                <div class="serial-capture-grid">
+                  <label>串口
+                    <select id="serial-port-select"></select>
+                  </label>
+                  <label>波特率
+                    <input id="serial-baud-input" type="number" value="115200" min="1200" step="1">
+                  </label>
+                </div>
+                <div class="inline-actions">
+                  <button id="refresh-serial-ports-btn" type="button">刷新串口</button>
+                  <button id="start-serial-capture-btn" type="button">开始抓取</button>
+                  <button id="stop-serial-capture-btn" type="button">停止抓取</button>
+                </div>
+                <textarea id="serial-live-output" class="serial-live-output" rows="10" readonly placeholder="抓取开始后，这里会显示最近的串口日志。"></textarea>
+              </div>
             </article>
           </section>
 
