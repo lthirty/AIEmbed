@@ -1122,6 +1122,47 @@ function createEditableAnalysisSection(order, title, id, value) {
   return section;
 }
 
+function normalizeListItems(items, fallbackText = "") {
+  if (Array.isArray(items) && items.length) {
+    return items.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  const text = String(fallbackText || "").trim();
+  if (!text) return [""];
+  return text
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*[-\d.、]+\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function createEditableListSection(order, title, key, items, minRows = 1) {
+  const section = document.createElement("section");
+  section.className = "editable-analysis-section";
+  section.innerHTML = `<h4>${order} ${title}</h4>`;
+  const list = document.createElement("div");
+  list.className = "editable-list";
+  const values = [...items];
+  while (values.length < minRows) values.push("");
+  values.forEach((value, index) => {
+    const row = document.createElement("label");
+    row.className = "editable-list-row";
+    row.innerHTML = `<span>${index + 1}</span>`;
+    const textarea = document.createElement("textarea");
+    textarea.rows = 3;
+    textarea.value = value || "";
+    textarea.dataset.listKey = key;
+    row.appendChild(textarea);
+    list.appendChild(row);
+  });
+  section.appendChild(list);
+  return section;
+}
+
+function collectListField(key) {
+  return Array.from(document.querySelectorAll(`textarea[data-list-key="${key}"]`))
+    .map((item) => item.value.trim())
+    .filter(Boolean);
+}
+
 function renderReadableAnalysis(analysis) {
   elements.analysisResult.innerHTML = "";
   state.latestAnalysis = analysis;
@@ -1139,12 +1180,18 @@ function renderReadableAnalysis(analysis) {
   summaryGrid.appendChild(createSummaryField("优先级", "summary-priority", result.priority || "P1", "select", ["P0", "P1", "P2", "P3"]));
   summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", result.risk_level || "low", "select", ["low", "medium", "high", "critical"]));
   elements.analysisResult.appendChild(summaryGrid);
-  elements.analysisResult.appendChild(createEditableAnalysisSection("01", "现象", "summary-phenomenon", result.phenomenon_summary || ""));
-  elements.analysisResult.appendChild(createEditableAnalysisSection("02", "分层分析", "summary-layered", result.layered_analysis_summary || textFromLayeredAnalysis(result.layered_analysis || [])));
-  elements.analysisResult.appendChild(createEditableAnalysisSection("03", "验证方法", "summary-validation", result.validation_summary || textFromValidationSteps(result.validation_steps || [])));
-  elements.analysisResult.appendChild(createEditableAnalysisSection("04", "根因", "summary-root-cause", result.root_cause_summary || textFromPossibleCauses(result.possible_causes || [])));
-  elements.analysisResult.appendChild(createEditableAnalysisSection("05", "解决方案", "summary-solution", result.solution_summary || textFromSolution(result)));
-  elements.analysisResult.appendChild(createEditableAnalysisSection("06", "经验总结", "summary-lessons", result.lessons_summary || textFromLessons(result)));
+  const phenomenonItems = normalizeListItems(result.phenomenon_items, result.phenomenon_summary || "");
+  const layeredItems = normalizeListItems(result.layered_analysis_items, textFromLayeredAnalysis(result.layered_analysis || []));
+  const validationItems = normalizeListItems(result.validation_items, textFromValidationSteps(result.validation_steps || []));
+  const rootCauseItems = normalizeListItems(result.root_cause_items, result.root_cause_summary || textFromPossibleCauses(result.possible_causes || []));
+  const solutionItems = normalizeListItems(result.solution_items, result.solution_summary || textFromSolution(result));
+  const lessonsItems = normalizeListItems(result.lessons_items, result.lessons_summary || textFromLessons(result));
+  elements.analysisResult.appendChild(createEditableListSection("01", "现象", "phenomenon", phenomenonItems, 2));
+  elements.analysisResult.appendChild(createEditableListSection("02", "分层分析", "layered", layeredItems, 2));
+  elements.analysisResult.appendChild(createEditableListSection("03", "验证方法", "validation", validationItems, 2));
+  elements.analysisResult.appendChild(createEditableListSection("04", "根因", "root-cause", rootCauseItems, 2));
+  elements.analysisResult.appendChild(createEditableListSection("05", "解决方案", "solution", solutionItems, 2));
+  elements.analysisResult.appendChild(createEditableListSection("06", "经验总结", "lessons", lessonsItems, 2));
   renderAnalysisGuidance(result);
 }
 
@@ -1259,12 +1306,18 @@ async function saveAnalysisSummary() {
   result.test_time = document.getElementById("summary-test-time")?.value || "";
   result.device_model = document.getElementById("summary-device-model")?.value || "";
   result.serial_number = document.getElementById("summary-serial-number")?.value || "";
-  result.phenomenon_summary = document.getElementById("summary-phenomenon")?.value || "";
-  result.layered_analysis_summary = document.getElementById("summary-layered")?.value || "";
-  result.validation_summary = document.getElementById("summary-validation")?.value || "";
-  result.root_cause_summary = document.getElementById("summary-root-cause")?.value || "";
-  result.solution_summary = document.getElementById("summary-solution")?.value || "";
-  result.lessons_summary = document.getElementById("summary-lessons")?.value || "";
+  result.phenomenon_items = collectListField("phenomenon");
+  result.layered_analysis_items = collectListField("layered");
+  result.validation_items = collectListField("validation");
+  result.root_cause_items = collectListField("root-cause");
+  result.solution_items = collectListField("solution");
+  result.lessons_items = collectListField("lessons");
+  result.phenomenon_summary = result.phenomenon_items.join("\n");
+  result.layered_analysis_summary = result.layered_analysis_items.join("\n");
+  result.validation_summary = result.validation_items.join("\n");
+  result.root_cause_summary = result.root_cause_items.join("\n");
+  result.solution_summary = result.solution_items.join("\n");
+  result.lessons_summary = result.lessons_items.join("\n");
   result.priority = document.getElementById("summary-priority")?.value || "P1";
   result.risk_level = document.getElementById("summary-risk-level")?.value || "low";
   await apiPost(`/api/sessions/${state.activeSessionId}/analysis-summary`, {
