@@ -14,6 +14,7 @@ namespace {
 // v0.5.0 - Replace blocking WebServer with esp_http_server for stable stream and capture concurrency
 // v0.16.0 - Project-side workbench frontend aligned with current analysis flow; firmware behavior unchanged
 // v0.17.0 - Project-side workbench refines session/evidence management and keeps root-cause sections blank until human confirmation; firmware behavior unchanged
+// v0.18.0 - Project-side workbench converts analysis rows into table form and improves compact evidence display; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

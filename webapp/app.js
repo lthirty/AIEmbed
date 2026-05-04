@@ -70,12 +70,14 @@ const state = {
   knowledge: [],
   selectedKnowledgeId: "",
   lastMissingInfo: [],
-  sectionEditState: {
-    phenomenon: false,
-    layeredValidation: false,
-    rootCause: false,
-    solution: false,
-    lessons: false,
+  rowEditState: {},
+  mergedColumnWidths: {
+    category: 160,
+    owner: 140,
+    reason: 360,
+    method: 320,
+    result: 240,
+    actions: 110,
   },
 };
 
@@ -390,20 +392,19 @@ function renderEvidenceList() {
   }
   evidence.forEach((item) => {
     const article = document.createElement("article");
-    article.className = "list-item compact-row";
+    article.className = "evidence-token";
+    const label = [item.title || item.fileName || "未命名资料", item.fileName || ""]
+      .filter((value, index, array) => value && array.indexOf(value) === index)
+      .join(" · ");
     article.innerHTML = `
-      <strong>${item.title || item.fileName || "未命名资料"}</strong>
-      <span class="item-meta">${[item.fileName || "", item.kind || "", item.createdAt || ""].filter(Boolean).join(" · ")}</span>
+      <span class="evidence-token-label" title="${label}">${label}</span>
     `;
-    const actions = document.createElement("div");
-    actions.className = "inline-actions mini-actions";
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "danger-button";
     delBtn.textContent = "删除";
     delBtn.addEventListener("click", () => deleteEvidence(item.id).catch(showGenericError));
-    actions.appendChild(delBtn);
-    article.appendChild(actions);
+    article.appendChild(delBtn);
     elements.evidenceInlineList.appendChild(article);
   });
 }
@@ -435,7 +436,7 @@ function buildDefaultAnalysisPrompt() {
     "先完成：01 现象。",
     "再完成：02-03 分层分析与验证方法。",
     "04 根因、05 解决方案、06 经验总结先留空，等待人工定位后再补。",
-    "02-03 每条请尽量拆分为：原因分析、验证方法、验证结果、责任人。",
+    "02-03 每条请尽量拆分为：分类、责任人、原因分析、验证方法、验证结果。",
   ];
   return lines.join("\n");
 }
@@ -536,16 +537,31 @@ function buildMergedRows(result) {
     const layer = layered[index] || {};
     const validation = validations[index] || {};
     rows.push({
+      category: layer.layer || "",
+      owner: "",
       reason: [layer.layer || "", layer.judgement || "", layer.why || ""].filter(Boolean).join("："),
       method: validation.instructions || validation.goal || "",
       result: validation.expected_result || "",
-      owner: "",
     });
   }
   return rows;
 }
 
-function createSectionHeader(title, key) {
+function rowEditKey(section, index) {
+  return `${section}:${index}`;
+}
+
+function isRowEditing(section, index) {
+  return !!state.rowEditState[rowEditKey(section, index)];
+}
+
+function toggleRowEdit(section, index) {
+  const key = rowEditKey(section, index);
+  state.rowEditState[key] = !state.rowEditState[key];
+  renderReadableAnalysis(state.latestAnalysis);
+}
+
+function createSectionHeader(title, options = {}) {
   const wrapper = document.createElement("div");
   wrapper.className = "section-header";
   const heading = document.createElement("h4");
@@ -553,24 +569,14 @@ function createSectionHeader(title, key) {
   wrapper.appendChild(heading);
   const actions = document.createElement("div");
   actions.className = "inline-actions mini-actions";
-  const editBtn = document.createElement("button");
-  editBtn.type = "button";
-  editBtn.className = "secondary-button";
-  editBtn.textContent = state.sectionEditState[key] ? "完成编辑" : "编辑";
-  editBtn.addEventListener("click", () => {
-    state.sectionEditState[key] = !state.sectionEditState[key];
-    renderReadableAnalysis(state.latestAnalysis);
-  });
-  const clearBtn = document.createElement("button");
-  clearBtn.type = "button";
-  clearBtn.className = "danger-button";
-  clearBtn.textContent = "删除";
-  clearBtn.addEventListener("click", () => {
-    if (!window.confirm(`确定清空“${title}”吗？`)) return;
-    clearSectionContent(key);
-  });
-  actions.appendChild(editBtn);
-  actions.appendChild(clearBtn);
+  if (typeof options.onAdd === "function") {
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "secondary-button";
+    addBtn.textContent = "新增一行";
+    addBtn.addEventListener("click", options.onAdd);
+    actions.appendChild(addBtn);
+  }
   wrapper.appendChild(actions);
   return wrapper;
 }
@@ -578,54 +584,218 @@ function createSectionHeader(title, key) {
 function createEditableListSection(order, title, key, items, minRows = 2) {
   const section = document.createElement("section");
   section.className = "editable-analysis-section";
-  section.appendChild(createSectionHeader(`${order} ${title}`, key));
+  section.appendChild(createSectionHeader(`${order} ${title}`, {
+    onAdd: () => {
+      if (!state.latestAnalysis) return;
+      const result = state.latestAnalysis.result;
+      const map = {
+        phenomenon: "phenomenon_items",
+        rootCause: "root_cause_items",
+        solution: "solution_items",
+        lessons: "lessons_items",
+      };
+      const fieldName = map[key];
+      result[fieldName] = [...normalizeListItems(result[fieldName], ""), ""];
+      renderReadableAnalysis(state.latestAnalysis);
+    },
+  }));
   const list = document.createElement("div");
-  list.className = "editable-list";
+  list.className = "simple-analysis-table";
+  [
+    ["index", "序号"],
+    ["content", "内容"],
+    ["actions", "操作"],
+  ].forEach(([, label]) => {
+    const head = document.createElement("div");
+    head.className = "simple-analysis-head";
+    head.textContent = label;
+    list.appendChild(head);
+  });
   const values = [...items];
   while (values.length < minRows) values.push("");
   values.forEach((value, index) => {
-    const row = document.createElement("label");
-    row.className = "editable-list-row";
-    row.innerHTML = `<span>${index + 1}</span>`;
+    const indexCell = document.createElement("div");
+    indexCell.className = "simple-analysis-index";
+    indexCell.textContent = String(index + 1);
+    list.appendChild(indexCell);
+
     const textarea = document.createElement("textarea");
     textarea.rows = 3;
     textarea.value = value || "";
     textarea.dataset.listKey = key;
-    textarea.readOnly = !state.sectionEditState[key];
-    row.appendChild(textarea);
-    list.appendChild(row);
+    textarea.dataset.listIndex = String(index);
+    textarea.readOnly = !isRowEditing(key, index);
+    textarea.className = "simple-analysis-textarea";
+    list.appendChild(textarea);
+
+    const actions = document.createElement("div");
+    actions.className = "inline-actions mini-actions row-actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "secondary-button";
+    editBtn.textContent = isRowEditing(key, index) ? "完成" : "编辑";
+    editBtn.addEventListener("click", () => toggleRowEdit(key, index));
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "danger-button";
+    deleteBtn.textContent = "删除";
+    deleteBtn.addEventListener("click", () => {
+      if (!state.latestAnalysis) return;
+      if (!window.confirm(`确定删除“${title}”的第 ${index + 1} 行吗？`)) return;
+      const result = state.latestAnalysis.result;
+      const map = {
+        phenomenon: "phenomenon_items",
+        rootCause: "root_cause_items",
+        solution: "solution_items",
+        lessons: "lessons_items",
+      };
+      const fieldName = map[key];
+      const nextItems = [...normalizeListItems(result[fieldName], "")];
+      nextItems.splice(index, 1);
+      result[fieldName] = nextItems;
+      delete state.rowEditState[rowEditKey(key, index)];
+      renderReadableAnalysis(state.latestAnalysis);
+    });
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+    list.appendChild(actions);
   });
   section.appendChild(list);
   return section;
 }
 
+function applyMergedColumnWidths(element) {
+  Object.entries(state.mergedColumnWidths).forEach(([key, value]) => {
+    element.style.setProperty(`--col-${key}`, `${value}px`);
+  });
+}
+
+function createResizeHandle(columnKey, element) {
+  const handle = document.createElement("span");
+  handle.className = "column-resize-handle";
+  handle.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = state.mergedColumnWidths[columnKey];
+    const onMove = (moveEvent) => {
+      const next = Math.max(110, startWidth + moveEvent.clientX - startX);
+      state.mergedColumnWidths[columnKey] = next;
+      applyMergedColumnWidths(element);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+  return handle;
+}
+
 function createMergedSection(rows) {
   const section = document.createElement("section");
   section.className = "editable-analysis-section";
-  section.appendChild(createSectionHeader("02-03 分层分析与验证方法", "layeredValidation"));
+  section.appendChild(createSectionHeader("02-03 分层分析与验证方法", {
+    onAdd: () => {
+      if (!state.latestAnalysis) return;
+      const result = state.latestAnalysis.result;
+      const nextRows = [...buildMergedRows(result), { category: "", owner: "", reason: "", method: "", result: "" }];
+      result.layered_validation_rows = nextRows;
+      renderReadableAnalysis(state.latestAnalysis);
+    },
+  }));
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "merged-analysis-table-wrap";
+  applyMergedColumnWidths(tableWrap);
   const table = document.createElement("div");
   table.className = "merged-analysis-table";
-  table.innerHTML = `
-    <div class="merged-analysis-head">原因分析</div>
-    <div class="merged-analysis-head">验证方法</div>
-    <div class="merged-analysis-head">验证结果</div>
-    <div class="merged-analysis-head">责任人</div>
-  `;
-  const editable = state.sectionEditState.layeredValidation;
+  const headers = [
+    ["category", "分类"],
+    ["owner", "责任人"],
+    ["reason", "原因分析"],
+    ["method", "验证方法"],
+    ["result", "验证结果"],
+    ["actions", "操作"],
+  ];
+  headers.forEach(([key, label]) => {
+    const head = document.createElement("div");
+    head.className = "merged-analysis-head";
+    head.textContent = label;
+    if (key !== "actions") head.appendChild(createResizeHandle(key, tableWrap));
+    table.appendChild(head);
+  });
   const values = [...rows];
-  while (values.length < 2) values.push({ reason: "", method: "", result: "", owner: "" });
+  while (values.length < 2) values.push({ category: "", owner: "", reason: "", method: "", result: "" });
+  const builtinCategories = ["", "硬件", "软件", "固件", "OS", "__custom__"];
   values.forEach((row, index) => {
-    ["reason", "method", "result", "owner"].forEach((field) => {
+    const editable = isRowEditing("layeredValidation", index);
+    const categoryCell = document.createElement("div");
+    categoryCell.className = "merged-analysis-cell";
+    const categorySelect = document.createElement("select");
+    const customCategory = row.category && !["硬件", "软件", "固件", "OS"].includes(row.category) ? row.category : "";
+    const selectedCategory = customCategory ? "__custom__" : (row.category || "");
+    builtinCategories.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value === "" ? "未分类" : value === "__custom__" ? "自定义" : value;
+      categorySelect.appendChild(option);
+    });
+    categorySelect.value = selectedCategory;
+    categorySelect.disabled = !editable;
+    categorySelect.dataset.layeredRow = String(index);
+    categorySelect.dataset.layeredField = "category";
+    categoryCell.appendChild(categorySelect);
+    const customInput = document.createElement("input");
+    customInput.type = "text";
+    customInput.placeholder = "输入自定义分类";
+    customInput.value = customCategory;
+    customInput.dataset.layeredRow = String(index);
+    customInput.dataset.layeredField = "categoryCustom";
+    customInput.readOnly = !editable;
+    customInput.className = selectedCategory === "__custom__" ? "custom-category-input" : "custom-category-input hidden";
+    categorySelect.addEventListener("change", () => {
+      customInput.classList.toggle("hidden", categorySelect.value !== "__custom__");
+    });
+    categoryCell.appendChild(customInput);
+    table.appendChild(categoryCell);
+
+    ["owner", "reason", "method", "result"].forEach((field) => {
       const textarea = document.createElement("textarea");
       textarea.rows = 3;
       textarea.value = row[field] || "";
       textarea.dataset.layeredRow = String(index);
       textarea.dataset.layeredField = field;
       textarea.readOnly = !editable;
+      textarea.className = "merged-analysis-textarea";
       table.appendChild(textarea);
     });
+
+    const actions = document.createElement("div");
+    actions.className = "inline-actions mini-actions row-actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "secondary-button";
+    editBtn.textContent = editable ? "完成" : "编辑";
+    editBtn.addEventListener("click", () => toggleRowEdit("layeredValidation", index));
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "danger-button";
+    deleteBtn.textContent = "删除";
+    deleteBtn.addEventListener("click", () => {
+      if (!state.latestAnalysis) return;
+      if (!window.confirm(`确定删除第 ${index + 1} 行分层分析吗？`)) return;
+      const nextRows = [...buildMergedRows(state.latestAnalysis.result)];
+      nextRows.splice(index, 1);
+      state.latestAnalysis.result.layered_validation_rows = nextRows;
+      delete state.rowEditState[rowEditKey("layeredValidation", index)];
+      renderReadableAnalysis(state.latestAnalysis);
+    });
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+    table.appendChild(actions);
   });
-  section.appendChild(table);
+  tableWrap.appendChild(table);
+  section.appendChild(tableWrap);
   return section;
 }
 
@@ -637,41 +807,22 @@ function collectListField(key) {
 
 function collectMergedRows() {
   const map = new Map();
-  Array.from(document.querySelectorAll("textarea[data-layered-row]")).forEach((node) => {
+  Array.from(document.querySelectorAll("[data-layered-row]")).forEach((node) => {
     const rowIndex = Number(node.dataset.layeredRow);
     const field = node.dataset.layeredField;
-    if (!map.has(rowIndex)) map.set(rowIndex, { reason: "", method: "", result: "", owner: "" });
+    if (!map.has(rowIndex)) map.set(rowIndex, { category: "", owner: "", reason: "", method: "", result: "", categoryCustom: "" });
     map.get(rowIndex)[field] = node.value.trim();
   });
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([, value]) => value)
+    .map(([, value]) => ({
+      category: value.category === "__custom__" ? value.categoryCustom : value.category,
+      owner: value.owner,
+      reason: value.reason,
+      method: value.method,
+      result: value.result,
+    }))
     .filter((row) => Object.values(row).some(Boolean));
-}
-
-function clearSectionContent(key) {
-  if (!state.latestAnalysis) return;
-  const result = state.latestAnalysis.result;
-  if (key === "phenomenon") {
-    result.phenomenon_items = [];
-    result.phenomenon_summary = "";
-  } else if (key === "layeredValidation") {
-    result.layered_validation_rows = [];
-    result.layered_analysis_items = [];
-    result.validation_items = [];
-    result.layered_analysis_summary = "";
-    result.validation_summary = "";
-  } else if (key === "rootCause") {
-    result.root_cause_items = [];
-    result.root_cause_summary = "";
-  } else if (key === "solution") {
-    result.solution_items = [];
-    result.solution_summary = "";
-  } else if (key === "lessons") {
-    result.lessons_items = [];
-    result.lessons_summary = "";
-  }
-  renderReadableAnalysis(state.latestAnalysis);
 }
 
 function renderReadableAnalysis(analysis) {

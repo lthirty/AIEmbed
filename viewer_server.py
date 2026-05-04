@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.17.0"
+APP_VERSION = "v0.18.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1847,7 +1847,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
     schema = {
         "phenomenon_summary": "",
         "phenomenon_items": [""],
-        "layered_validation_rows": [{"reason": "", "method": "", "result": "", "owner": ""}],
+        "layered_validation_rows": [{"category": "", "owner": "", "reason": "", "method": "", "result": ""}],
         "layered_analysis": [{"layer": "", "judgement": "", "why": ""}],
         "evidence_used": [{"evidence_title": "", "kind": "", "why_it_matters": ""}],
         "possible_causes": [{"label": "", "confidence": 0.0, "reasoning": "", "required_next_check": ""}],
@@ -1886,6 +1886,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "本轮先只完成现象，以及“分层分析+验证方法”的合并条目。"
         "根因、解决方案、经验总结必须先留空，等待人工验证后再填写。"
         "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
+        "合并列表中的每一条请显式给出 category、owner、reason、method、result 五个字段。"
         "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
         "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
