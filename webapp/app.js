@@ -365,8 +365,8 @@ function renderSimpleList(target, items, mapper) {
   for (const item of items) {
     const mapped = mapper(item);
     const article = document.createElement("article");
-    article.className = "list-item";
-    article.innerHTML = `<strong>${mapped.title}</strong><p>${mapped.meta || ""}</p>`;
+    article.className = "list-item compact-row";
+    article.innerHTML = `<strong>${mapped.title}</strong>${mapped.meta ? `<span class="item-meta">${mapped.meta}</span>` : ""}`;
     target.appendChild(article);
   }
 }

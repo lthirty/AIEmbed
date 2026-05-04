@@ -2,6 +2,12 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.14.3 - 2026-05-04
+
+- Minimized purely display-oriented list metadata such as file names, material names, image names, tags, and timestamps so they no longer consume a full extra line in common list views.
+- Updated reusable list rendering to show `title + lightweight meta` in one compact row where appropriate.
+- Bumped the local workbench version to `v0.14.3`.
+
 ## v0.14.2 - 2026-05-04
 
 - Changed the analysis-page step explanation strip to a horizontal layout on larger screens so one screen can show more onboarding guidance at once.
