@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.14.0"
+APP_VERSION = "v0.14.1"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -917,6 +917,42 @@ def create_knowledge_from_payload(
         return knowledge_to_dict(row)
     finally:
         conn.close()
+
+
+def ensure_default_library_entries() -> None:
+    title = "Awesome-Embedded 外部案例资源库"
+    conn = get_conn()
+    try:
+        exists = conn.execute("SELECT id FROM knowledge WHERE title = ?", (title,)).fetchone()
+        if exists:
+            return
+    finally:
+        conn.close()
+
+    create_knowledge_from_payload(
+        session_id="",
+        title=title,
+        root_cause=(
+            "这是一个面向嵌入式开发者的外部精选资源库，适合作为案例库里的通用参考入口。"
+            "当用户遇到某类问题但本地知识库还不完善时，可以先从这个资源库里查找相关方向的资料、课程、驱动、工具链和调试经验。"
+        ),
+        solution=(
+            "适用方式：\n"
+            "1. 先在当前 Session 明确问题类型，例如 UART / I2C / WIFI / Bootloader / RTOS。\n"
+            "2. 再去这个外部资源库里按主题查找对应的资料。\n"
+            "3. 将找到的参考资料继续导入本系统，作为当前分析的补充依据。\n"
+            "4. 如果外部资料帮助定位了问题，再把结论沉淀回本地 Knowledge Library。"
+        ),
+        validation=(
+            "这个资源库覆盖了 Embedded Software Skill、MCU programming、Linux Kernel and device driver development、RTOS、"
+            "Peripheral、Machine Learning & AI on MCU、Tips & tricks 等方向，适合在缺少内部案例时作为外部参考库。"
+        ),
+        related_cases=[
+            {"label": "GitHub 项目", "url": "https://github.com/nhivp/Awesome-Embedded"},
+            {"label": "资源定位建议", "value": "先按问题类型筛选，再把命中的资料导入当前 Session"},
+        ],
+        tags=["外部资源", "参考库", "Embedded", "案例扩展", "Awesome-Embedded"],
+    )
 
 
 def create_knowledge_from_session(session_id: str, payload: dict | None = None) -> dict:
@@ -2550,6 +2586,7 @@ def main() -> int:
         return 1
 
     init_storage()
+    ensure_default_library_entries()
     server = ThreadingHTTPServer((HOST, PORT), ViewerHandler)
     provider_config = load_provider_config()
     print(f"Local prototype workbench: http://{HOST}:{PORT}/")

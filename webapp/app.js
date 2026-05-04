@@ -899,6 +899,24 @@ function createListSection(title, items) {
     card.className = "result-card";
     if (typeof item === "string") {
       card.textContent = item;
+    } else if (item && typeof item === "object" && item.url) {
+      const strong = document.createElement("strong");
+      strong.textContent = item.label || "参考链接";
+      const link = document.createElement("a");
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = item.url;
+      card.appendChild(strong);
+      card.appendChild(document.createElement("br"));
+      card.appendChild(link);
+      if (item.value) {
+        const extra = document.createElement("p");
+        extra.textContent = item.value;
+        card.appendChild(extra);
+      }
+    } else if (item && typeof item === "object" && item.label && item.value) {
+      card.innerHTML = `<strong>${item.label}</strong><p>${item.value}</p>`;
     } else {
       card.textContent = Object.entries(item)
         .filter(([, value]) => value !== null && value !== undefined && value !== "")
@@ -1264,8 +1282,8 @@ function renderKnowledge() {
     elements.knowledgeDetail.appendChild(createListSection("根因", [detail.rootCause || "无"]));
     elements.knowledgeDetail.appendChild(createListSection("解决方案", [detail.solution || "无"]));
     elements.knowledgeDetail.appendChild(createListSection("验证方法", [detail.validation || "无"]));
-    elements.knowledgeDetail.appendChild(createListSection("关联 TestCase", (detail.relatedCases || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))));
-    elements.knowledgeDetail.appendChild(createListSection("标签", (detail.tags || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))));
+    elements.knowledgeDetail.appendChild(createListSection("关联资源 / TestCase", detail.relatedCases || []));
+    elements.knowledgeDetail.appendChild(createListSection("标签", detail.tags || []));
   }
 }
 

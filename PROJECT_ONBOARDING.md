@@ -578,6 +578,7 @@ http://127.0.0.1:8000/
 - 当前 Analysis Center 会在 AI 区域提前展示可参考的知识条目、测试用例和本 Session 最近分析，帮助用户理解 AI 的参考依据
 - 当前 Analysis Center 已支持把步骤数据保存到 `SessionStep`
 - 当前 Library 已支持从当前 Session 自动生成 Knowledge 条目
+- 当前 Library 还会预置一个外部精选资源条目：`Awesome-Embedded`，可作为案例库不足时的外部参考入口
 
 ## 12. 本次实际调试记录
 

@@ -2,6 +2,12 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.14.1 - 2026-05-04
+
+- Added `Awesome-Embedded` as a seeded external resource entry in the Library page, so the case library now includes a reusable GitHub-based embedded reference source.
+- Updated the Library detail rendering to support clickable external links and richer resource-style related items.
+- Bumped the local workbench version to `v0.14.1`.
+
 ## v0.14.0 - 2026-05-04
 
 - Rebuilt the `Analysis Center` around a novice-friendly three-stage flow: `问题输入与资料准备 -> AI 分析与参考库引导 -> 人工修正与执行`.
