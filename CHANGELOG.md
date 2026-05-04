@@ -2,6 +2,12 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.14.2 - 2026-05-04
+
+- Changed the analysis-page step explanation strip to a horizontal layout on larger screens so one screen can show more onboarding guidance at once.
+- Kept the main troubleshooting flow order unchanged while allowing the explanatory `Step 1~4` cards to use space more efficiently.
+- Bumped the local workbench version to `v0.14.2`.
+
 ## v0.14.1 - 2026-05-04
 
 - Added `Awesome-Embedded` as a seeded external resource entry in the Library page, so the case library now includes a reusable GitHub-based embedded reference source.

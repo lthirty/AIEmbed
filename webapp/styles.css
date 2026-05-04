@@ -579,6 +579,7 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
   display: grid;
   gap: 12px;
   margin-bottom: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .guide-step,
@@ -610,6 +611,9 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
 @media (max-width: 1500px) {
   .layout {
     grid-template-columns: 280px 1fr;
+  }
+  .guide-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .overview-top,
   .overview-bottom {
@@ -648,5 +652,8 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
   .analysis-compare-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .guide-strip {
+    grid-template-columns: 1fr;
   }
 }
