@@ -575,10 +575,21 @@ async function saveCurrentStep(status = "pending") {
 function renderEvidencePreview() {
   const evidence = state.activeSessionDetail?.evidence || [];
   const recent = evidence.slice(0, 6);
-  renderSimpleList(elements.recentEvidenceList, recent, (item) => ({
-    title: `${item.title} · ${item.kind}`,
-    meta: `${item.createdAt || ""}${item.fileName ? ` · ${item.fileName}` : ""}`,
-  }));
+  elements.recentEvidenceList.innerHTML = "";
+  recent.forEach((item) => {
+    const chip = document.createElement("span");
+    chip.className = "evidence-chip";
+    const parts = [
+      item.title || "未命名证据",
+      item.fileName || "",
+      item.kind || "",
+    ].filter(Boolean);
+    chip.textContent = parts.join(" · ");
+    elements.recentEvidenceList.appendChild(chip);
+  });
+  if (!recent.length) {
+    elements.recentEvidenceList.innerHTML = '<p class="helper">暂无证据</p>';
+  }
   const latestSerial = evidence.find((item) => item.kind === "serial_log");
   elements.latestSerialOutput.value = latestSerial ? (latestSerial.contentText || "").split(/\r?\n/).slice(-10).join("\n") : "";
 }
@@ -1069,6 +1080,48 @@ function createSummaryField(label, id, value, type = "text", options = []) {
   return wrapper;
 }
 
+function textFromLayeredAnalysis(items = []) {
+  return items.map((entry) => `${entry.layer || "未命名层"}：${entry.judgement || ""}${entry.why ? `\n原因：${entry.why}` : ""}`).join("\n\n");
+}
+
+function textFromValidationSteps(items = []) {
+  return items.map((entry, index) => `${index + 1}. ${entry.goal || entry.step_id || "验证步骤"}\n动作：${entry.instructions || ""}\n预期：${entry.expected_result || ""}`).join("\n\n");
+}
+
+function textFromPossibleCauses(items = []) {
+  return items.map((entry, index) => `${index + 1}. ${entry.label || "可能原因"}\n依据：${entry.reasoning || ""}\n下一步：${entry.required_next_check || ""}`).join("\n\n");
+}
+
+function textFromSolution(result) {
+  const steps = result.validation_steps || [];
+  const commands = result.suggested_commands_or_snippets || [];
+  return [
+    ...steps.slice(0, 3).map((entry) => `- ${entry.instructions || entry.goal || ""}`),
+    ...commands.slice(0, 3).map((entry) => `- ${entry.content || ""}`),
+  ].filter(Boolean).join("\n");
+}
+
+function textFromLessons(result) {
+  const assets = result.related_assets || {};
+  const tags = (result.case_update_hint || {}).candidate_root_cause_tags || [];
+  return [
+    ...(assets.reusable_patterns || []).map((item) => `- ${item}`),
+    ...(tags.length ? [`候选标签：${tags.join(" / ")}`] : []),
+  ].join("\n");
+}
+
+function createEditableAnalysisSection(order, title, id, value) {
+  const section = document.createElement("section");
+  section.className = "editable-analysis-section";
+  section.innerHTML = `<h4>${order} ${title}</h4>`;
+  const textarea = document.createElement("textarea");
+  textarea.id = id;
+  textarea.rows = 5;
+  textarea.value = value || "";
+  section.appendChild(textarea);
+  return section;
+}
+
 function renderReadableAnalysis(analysis) {
   elements.analysisResult.innerHTML = "";
   state.latestAnalysis = analysis;
@@ -1086,13 +1139,12 @@ function renderReadableAnalysis(analysis) {
   summaryGrid.appendChild(createSummaryField("优先级", "summary-priority", result.priority || "P1", "select", ["P0", "P1", "P2", "P3"]));
   summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", result.risk_level || "low", "select", ["low", "medium", "high", "critical"]));
   elements.analysisResult.appendChild(summaryGrid);
-  elements.analysisResult.appendChild(createSummaryField("现象总结", "summary-phenomenon", result.phenomenon_summary || "", "textarea"));
-  elements.analysisResult.appendChild(createListSection("分层分析", result.layered_analysis || []));
-  elements.analysisResult.appendChild(createListSection("已用证据", result.evidence_used || []));
-  elements.analysisResult.appendChild(createListSection("可能原因", result.possible_causes || []));
-  elements.analysisResult.appendChild(createListSection("验证步骤", result.validation_steps || []));
-  elements.analysisResult.appendChild(createListSection("缺失信息", result.missing_information || []));
-  elements.analysisResult.appendChild(createListSection("建议命令/片段", result.suggested_commands_or_snippets || []));
+  elements.analysisResult.appendChild(createEditableAnalysisSection("01", "现象", "summary-phenomenon", result.phenomenon_summary || ""));
+  elements.analysisResult.appendChild(createEditableAnalysisSection("02", "分层分析", "summary-layered", result.layered_analysis_summary || textFromLayeredAnalysis(result.layered_analysis || [])));
+  elements.analysisResult.appendChild(createEditableAnalysisSection("03", "验证方法", "summary-validation", result.validation_summary || textFromValidationSteps(result.validation_steps || [])));
+  elements.analysisResult.appendChild(createEditableAnalysisSection("04", "根因", "summary-root-cause", result.root_cause_summary || textFromPossibleCauses(result.possible_causes || [])));
+  elements.analysisResult.appendChild(createEditableAnalysisSection("05", "解决方案", "summary-solution", result.solution_summary || textFromSolution(result)));
+  elements.analysisResult.appendChild(createEditableAnalysisSection("06", "经验总结", "summary-lessons", result.lessons_summary || textFromLessons(result)));
   renderAnalysisGuidance(result);
 }
 
@@ -1208,6 +1260,11 @@ async function saveAnalysisSummary() {
   result.device_model = document.getElementById("summary-device-model")?.value || "";
   result.serial_number = document.getElementById("summary-serial-number")?.value || "";
   result.phenomenon_summary = document.getElementById("summary-phenomenon")?.value || "";
+  result.layered_analysis_summary = document.getElementById("summary-layered")?.value || "";
+  result.validation_summary = document.getElementById("summary-validation")?.value || "";
+  result.root_cause_summary = document.getElementById("summary-root-cause")?.value || "";
+  result.solution_summary = document.getElementById("summary-solution")?.value || "";
+  result.lessons_summary = document.getElementById("summary-lessons")?.value || "";
   result.priority = document.getElementById("summary-priority")?.value || "P1";
   result.risk_level = document.getElementById("summary-risk-level")?.value || "low";
   await apiPost(`/api/sessions/${state.activeSessionId}/analysis-summary`, {

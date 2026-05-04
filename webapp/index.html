@@ -250,45 +250,45 @@
         <section id="view-analysis" class="view-page">
           <section class="panel">
             <div class="panel-head">
-              <h3>01. 问题输入与资料准备</h3>
-              <span class="helper">先输入问题、导入参考资料和证据，再让 AI 基于参考库给出分析思路</span>
+              <h3>01. 资料导入与问题描述</h3>
+              <span class="helper">先导入规格书、测试报告、图片等资料，再描述本轮问题和分析目标</span>
             </div>
             <section class="guide-strip">
-              <div class="guide-step"><strong>Step 1</strong><span>输入问题现象与分析目标</span></div>
-              <div class="guide-step"><strong>Step 2</strong><span>导入资料、日志、抓拍等证据</span></div>
+              <div class="guide-step"><strong>Step 1</strong><span>导入规格书、测试报告、图片等资料</span></div>
+              <div class="guide-step"><strong>Step 2</strong><span>描述碰到的问题与分析目标</span></div>
               <div class="guide-step"><strong>Step 3</strong><span>让 AI 结合参考库生成分析与验证建议</span></div>
               <div class="guide-step"><strong>Step 4</strong><span>人工执行、修正并沉淀结论</span></div>
             </section>
-            <label>本轮问题描述 / 分析目标<textarea id="analysis-request" rows="5" placeholder="例如：客户反馈设备偶发重启。请结合规格文档、串口日志和历史经验，按定位顺序分析最可能原因并给出下一步验证动作。"></textarea></label>
             <div class="grid-three">
               <article class="stack-card">
-                <h4>资料导入</h4>
+                <h4>A. 资料导入</h4>
                 <label>标题<input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述"></label>
                 <label>文件<input id="material-file" type="file"></label>
                 <button id="upload-material-btn" type="button">上传资料</button>
-                <p id="material-result" class="helper">支持 txt / md / log / json / csv / yaml / pdf。</p>
+                <p id="material-result" class="helper">支持 txt / md / log / json / csv / yaml / pdf，并显示导入文件名。</p>
               </article>
 
               <article class="stack-card">
-                <h4>导入信息</h4>
-                <label>标题<input id="info-title" type="text" placeholder="例如 现场观察 / 异常截图"></label>
-                <label>信息内容<textarea id="info-content" rows="6" placeholder="记录环境、复现步骤、异常现象"></textarea></label>
+                <h4>B. 问题描述 / 测试报告 / 图片</h4>
+                <label>标题<input id="info-title" type="text" placeholder="例如 现场观察 / 测试报告 / 异常截图"></label>
+                <label>问题描述<textarea id="info-content" rows="6" placeholder="描述环境、复现步骤、异常现象，以及你当前最想定位的问题"></textarea></label>
                 <label>附件<input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
-                <button id="save-info-btn" type="button">导入信息</button>
-                <p id="info-result" class="helper">可只填文字，也可附带图片或文档。</p>
+                <button id="save-info-btn" type="button">导入问题信息</button>
+                <p id="info-result" class="helper">这里可导入测试报告、图片或补充问题说明。</p>
               </article>
 
               <article class="stack-card">
-                <h4>设备抓拍</h4>
+                <h4>最近证据 / 抓拍</h4>
                 <label>设备 IP<input id="device-ip" type="text" placeholder="例如 192.168.2.116"></label>
                 <button id="capture-snapshot-btn" type="button">抓拍并保存</button>
                 <p id="snapshot-result" class="helper">未抓拍。</p>
                 <div class="recent-evidence">
                   <h5>最近证据</h5>
-                  <div id="recent-evidence-list" class="list-stack"></div>
+                  <div id="recent-evidence-list" class="evidence-chip-list"></div>
                 </div>
               </article>
             </div>
+            <label>本轮问题描述 / 分析目标<textarea id="analysis-request" rows="5" placeholder="例如：客户反馈设备偶发重启。请结合规格书、测试报告、图片和历史经验，按 01~06 的顺序分析并给出下一步验证动作。"></textarea></label>
           </section>
 
           <section class="panel">
@@ -346,7 +346,7 @@
 
           <section class="panel">
             <div class="panel-head">
-              <span class="role">分析结果</span>
+              <span class="role">C. AI 分析结果</span>
               <button id="save-analysis-summary-btn" type="button">保存分析摘要</button>
             </div>
             <div id="analysis-result" class="analysis-readable"></div>
