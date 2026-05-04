@@ -2,11 +2,8 @@ const elements = {
   appVersion: document.getElementById("app-version"),
   heroAppVersion: document.getElementById("hero-app-version"),
   providerStatus: document.getElementById("provider-status"),
+  heroProviderStatus: document.getElementById("hero-provider-status"),
   providerModel: document.getElementById("provider-model"),
-  activeStageLabel: document.getElementById("active-stage-label"),
-  overviewCounts: document.getElementById("overview-counts"),
-  overviewIssueTypes: document.getElementById("overview-issue-types"),
-  overviewSeverities: document.getElementById("overview-severities"),
   providerName: document.getElementById("provider-name"),
   apiBaseUrl: document.getElementById("api-base-url"),
   apiKey: document.getElementById("api-key"),
@@ -16,6 +13,14 @@ const elements = {
   providerSaveResult: document.getElementById("provider-save-result"),
   aiSettingsPanel: document.getElementById("ai-settings-panel"),
   aiValidationBadge: document.getElementById("ai-validation-badge"),
+  activeSessionLabel: document.getElementById("active-session-label"),
+  activeStageLabel: document.getElementById("active-stage-label"),
+  pageTitle: document.getElementById("page-title"),
+  pageSubtitle: document.getElementById("page-subtitle"),
+  overviewCounts: document.getElementById("overview-counts"),
+  recentSessions: document.getElementById("recent-sessions"),
+  recentTests: document.getElementById("recent-tests"),
+  recentKnowledge: document.getElementById("recent-knowledge"),
   sessionTitle: document.getElementById("session-title"),
   sessionCustomer: document.getElementById("session-customer"),
   deviceModel: document.getElementById("device-model"),
@@ -29,18 +34,10 @@ const elements = {
   createSessionBtn: document.getElementById("create-session-btn"),
   saveSessionMetaBtn: document.getElementById("save-session-meta-btn"),
   deleteSessionBtn: document.getElementById("delete-session-btn"),
-  historySessionsPanel: document.getElementById("history-sessions-panel"),
-  sessionsList: document.getElementById("sessions-list"),
-  activeSessionLabel: document.getElementById("active-session-label"),
-  sessionStageNav: document.getElementById("session-stage-nav"),
-  stageGuidance: document.getElementById("stage-guidance"),
-  librarySessions: document.getElementById("library-sessions"),
-  libraryAnalyses: document.getElementById("library-analyses"),
-  libraryTestCases: document.getElementById("library-test-cases"),
-  materialTitle: document.getElementById("material-title"),
-  materialFile: document.getElementById("material-file"),
-  uploadMaterialBtn: document.getElementById("upload-material-btn"),
-  materialResult: document.getElementById("material-result"),
+  qaNewSession: document.getElementById("qa-new-session"),
+  qaImportMaterial: document.getElementById("qa-import-material"),
+  qaStartTest: document.getElementById("qa-start-test"),
+  qaStartAnalysis: document.getElementById("qa-start-analysis"),
   testCaseCode: document.getElementById("test-case-code"),
   testCaseName: document.getElementById("test-case-name"),
   testCaseCategory: document.getElementById("test-case-category"),
@@ -50,15 +47,10 @@ const elements = {
   testCaseResult: document.getElementById("test-case-result"),
   testCaseCount: document.getElementById("test-case-count"),
   testCasesList: document.getElementById("test-cases-list"),
+  runSelectedTestBtn: document.getElementById("run-selected-test-btn"),
+  executionTarget: document.getElementById("execution-target"),
   testRunCount: document.getElementById("test-run-count"),
   testRunsHistory: document.getElementById("test-runs-history"),
-  logTitle: document.getElementById("log-title"),
-  logContent: document.getElementById("log-content"),
-  saveLogBtn: document.getElementById("save-log-btn"),
-  logFileTitle: document.getElementById("log-file-title"),
-  logFileInput: document.getElementById("log-file-input"),
-  uploadLogFileBtn: document.getElementById("upload-log-file-btn"),
-  logFileResult: document.getElementById("log-file-result"),
   serialPortSelect: document.getElementById("serial-port-select"),
   refreshSerialPortsBtn: document.getElementById("refresh-serial-ports-btn"),
   serialBaud: document.getElementById("serial-baud"),
@@ -66,6 +58,31 @@ const elements = {
   stopSerialCaptureBtn: document.getElementById("stop-serial-capture-btn"),
   serialCaptureStatus: document.getElementById("serial-capture-status"),
   latestSerialOutput: document.getElementById("latest-serial-output"),
+  logTitle: document.getElementById("log-title"),
+  logContent: document.getElementById("log-content"),
+  saveLogBtn: document.getElementById("save-log-btn"),
+  logFileTitle: document.getElementById("log-file-title"),
+  logFileInput: document.getElementById("log-file-input"),
+  uploadLogFileBtn: document.getElementById("upload-log-file-btn"),
+  logFileResult: document.getElementById("log-file-result"),
+  sessionStageNav: document.getElementById("session-stage-nav"),
+  stageGuidance: document.getElementById("stage-guidance"),
+  stepFormTitle: document.getElementById("step-form-title"),
+  stepFormFields: document.getElementById("step-form-fields"),
+  saveStepBtn: document.getElementById("save-step-btn"),
+  markStepDoneBtn: document.getElementById("mark-step-done-btn"),
+  stepSaveResult: document.getElementById("step-save-result"),
+  analysisRequest: document.getElementById("analysis-request"),
+  captureBeforeAnalyze: document.getElementById("capture-before-analyze"),
+  suggestMissingBtn: document.getElementById("suggest-missing-btn"),
+  suggestTestsBtn: document.getElementById("suggest-tests-btn"),
+  analyzeBtn: document.getElementById("analyze-btn"),
+  workflowSteps: document.getElementById("workflow-steps"),
+  analysisGuidance: document.getElementById("analysis-guidance"),
+  materialTitle: document.getElementById("material-title"),
+  materialFile: document.getElementById("material-file"),
+  uploadMaterialBtn: document.getElementById("upload-material-btn"),
+  materialResult: document.getElementById("material-result"),
   infoTitle: document.getElementById("info-title"),
   infoContent: document.getElementById("info-content"),
   infoFile: document.getElementById("info-file"),
@@ -73,30 +90,38 @@ const elements = {
   infoResult: document.getElementById("info-result"),
   captureSnapshotBtn: document.getElementById("capture-snapshot-btn"),
   snapshotResult: document.getElementById("snapshot-result"),
-  analysisRequest: document.getElementById("analysis-request"),
-  captureBeforeAnalyze: document.getElementById("capture-before-analyze"),
-  analyzeBtn: document.getElementById("analyze-btn"),
-  workflowSteps: document.getElementById("workflow-steps"),
-  analysisGuidance: document.getElementById("analysis-guidance"),
+  recentEvidenceList: document.getElementById("recent-evidence-list"),
   analysisResult: document.getElementById("analysis-result"),
   saveAnalysisSummaryBtn: document.getElementById("save-analysis-summary-btn"),
   analysisCount: document.getElementById("analysis-count"),
   analysisHistory: document.getElementById("analysis-history"),
   compareSelectedBtn: document.getElementById("compare-selected-btn"),
   analysisCompare: document.getElementById("analysis-compare"),
+  knowledgeSearch: document.getElementById("knowledge-search"),
+  searchKnowledgeBtn: document.getElementById("search-knowledge-btn"),
+  createKnowledgeBtn: document.getElementById("create-knowledge-btn"),
+  knowledgeList: document.getElementById("knowledge-list"),
+  knowledgeDetail: document.getElementById("knowledge-detail"),
+  navItems: Array.from(document.querySelectorAll(".nav-item")),
+  views: Array.from(document.querySelectorAll(".view-page")),
 };
 
 const state = {
+  currentView: "overview",
   apiConfigured: false,
   overview: null,
   sessions: [],
-  testCases: [],
-  testRuns: [],
   activeSessionId: "",
-  serialStatus: null,
+  activeSessionDetail: null,
+  testCases: [],
+  selectedTestCaseId: "",
+  testRuns: [],
   latestAnalysis: null,
   selectedCompareIds: [],
-  activeSessionDetail: null,
+  serialStatus: null,
+  knowledge: [],
+  selectedKnowledgeId: "",
+  currentStepKey: "phenomenon",
 };
 
 const workflowTemplate = [
@@ -106,6 +131,63 @@ const workflowTemplate = [
   { key: "request", name: "发送分析请求", state: "pending", detail: "等待开始" },
   { key: "response", name: "解析分析结果", state: "pending", detail: "等待开始" },
 ];
+
+const stageDefinitions = {
+  phenomenon: {
+    title: "现象",
+    help: "记录当前看到的问题表现、影响范围和触发条件。",
+    fields: [
+      { key: "description", label: "问题描述", type: "textarea", rows: 4 },
+      { key: "impact", label: "影响范围", type: "textarea", rows: 3 },
+      { key: "trigger", label: "触发条件", type: "textarea", rows: 3 },
+    ],
+  },
+  layered_analysis: {
+    title: "分层分析",
+    help: "判断问题更像硬件、接口、驱动还是系统层。",
+    fields: [
+      { key: "suspectedLayer", label: "当前怀疑层", type: "text" },
+      { key: "reasoning", label: "判断依据", type: "textarea", rows: 4 },
+      { key: "excludedLayers", label: "已排除层", type: "textarea", rows: 3 },
+    ],
+  },
+  validation: {
+    title: "验证方法",
+    help: "定义测试动作、预期结果和已执行结果。",
+    fields: [
+      { key: "plan", label: "验证计划", type: "textarea", rows: 4 },
+      { key: "expected", label: "预期结果", type: "textarea", rows: 3 },
+      { key: "result", label: "当前结果", type: "textarea", rows: 3 },
+    ],
+  },
+  root_cause: {
+    title: "根因",
+    help: "只有在证据足够时才填写根因结论。",
+    fields: [
+      { key: "conclusion", label: "根因结论", type: "textarea", rows: 4 },
+      { key: "confidence", label: "置信度", type: "text" },
+      { key: "evidenceLinks", label: "关联证据", type: "textarea", rows: 3 },
+    ],
+  },
+  solution: {
+    title: "解决方案",
+    help: "记录 workaround、修复动作与回归建议。",
+    fields: [
+      { key: "workaround", label: "临时方案", type: "textarea", rows: 3 },
+      { key: "fixPlan", label: "正式修复", type: "textarea", rows: 4 },
+      { key: "regression", label: "回归建议", type: "textarea", rows: 3 },
+    ],
+  },
+  lessons: {
+    title: "经验总结",
+    help: "提炼可复用规则，准备生成 Knowledge。",
+    fields: [
+      { key: "reusablePattern", label: "复用规则", type: "textarea", rows: 4 },
+      { key: "tags", label: "标签", type: "text" },
+      { key: "nextAction", label: "后续动作", type: "textarea", rows: 3 },
+    ],
+  },
+};
 
 let workflowState = [];
 let serialPollTimer = null;
@@ -117,8 +199,13 @@ function showGenericError(error) {
 
 function requireSession() {
   if (!state.activeSessionId) {
-    window.alert("请先创建或选择一个会话。");
-    throw new Error("no active session");
+    throw new Error("请先创建或选择一个 Session。");
+  }
+}
+
+function requireTestCase() {
+  if (!state.selectedTestCaseId) {
+    throw new Error("请先选择一个 TestCase。");
   }
 }
 
@@ -133,156 +220,6 @@ function updateWorkflow(key, nextState, detail) {
   item.state = nextState;
   item.detail = detail;
   renderWorkflow();
-}
-
-function renderWorkflow() {
-  elements.workflowSteps.innerHTML = "";
-  for (const step of workflowState) {
-    const article = document.createElement("article");
-    article.className = `workflow-step ${step.state}`;
-    article.innerHTML = `
-      <div class="step-name">${step.name}</div>
-      <div class="step-state">${step.state.toUpperCase()}</div>
-      <div class="step-detail"></div>
-    `;
-    article.querySelector(".step-detail").textContent = step.detail;
-    elements.workflowSteps.appendChild(article);
-  }
-}
-
-function renderOverview() {
-  const overview = state.overview || {};
-  const counts = overview.counts || {};
-  const countItems = [
-    ["会话总数", counts.sessions || 0],
-    ["未关闭 Session", counts.openSessions || 0],
-    ["证据条目", counts.evidence || 0],
-    ["分析记录", counts.analyses || 0],
-    ["测试用例", counts.testCases || 0],
-    ["测试执行", counts.testRuns || 0],
-  ];
-  elements.overviewCounts.innerHTML = countItems
-    .map(
-      ([label, value]) => `
-        <article class="overview-card">
-          <div class="overview-value">${value}</div>
-          <div class="overview-label">${label}</div>
-        </article>
-      `,
-    )
-    .join("");
-  elements.overviewIssueTypes.innerHTML = (overview.issueTypes || []).length
-    ? (overview.issueTypes || []).map((item) => `<span class="tag-pill">${item.label} · ${item.count}</span>`).join("")
-    : '<p class="helper">还没有问题类型积累。</p>';
-  elements.overviewSeverities.innerHTML = (overview.severities || []).length
-    ? (overview.severities || []).map((item) => `<span class="tag-pill">${item.label} · ${item.count}</span>`).join("")
-    : '<p class="helper">还没有严重级别分布。</p>';
-}
-
-function defaultStageGuidance(stageKey) {
-  const mapping = {
-    phenomenon: {
-      title: "现象",
-      points: ["先写清楚症状、影响范围和复现条件。", "优先导入首批资料和串口日志。", "如果 AI 无法判断，先补缺失信息而不是追问结论。"],
-    },
-    layered_analysis: {
-      title: "分层分析",
-      points: ["判断更像硬件、接口、驱动还是系统层。", "结合历史 Session 看类似问题通常卡在哪一层。", "把当前怀疑层写进分析结果，后续验证会更聚焦。"],
-    },
-    validation: {
-      title: "验证方法",
-      points: ["优先选择可重复执行的测试用例。", "如果当前测试库不够，先保存一个最小用例。", "日志、资料、抓拍和测试结果要形成证据闭环。"],
-    },
-    root_cause: {
-      title: "根因",
-      points: ["根因必须绑定证据，不要只写猜测。", "优先排除法，而不是一次写多个互斥结论。", "如果证据不足，回到前面阶段补验证。"],
-    },
-    solution: {
-      title: "解决方案",
-      points: ["记录 workaround、正式修复和回归动作。", "说明修复影响范围和需要复测的项。", "把后续需要沉淀成测试的动作提前列出来。"],
-    },
-    lessons: {
-      title: "经验总结",
-      points: ["提炼适用条件、根因标签和复用规则。", "把高价值步骤转成测试用例或模板。", "为后续 Case 沉淀准备统一结论。"],
-    },
-  };
-  return mapping[stageKey] || mapping.phenomenon;
-}
-
-function renderStageNav(sessionDetail) {
-  const stages = sessionDetail?.workflowStages || state.overview?.workflowStages || [];
-  const currentStage = sessionDetail?.workflowStage || "phenomenon";
-  elements.activeStageLabel.textContent = (stages.find((item) => item.key === currentStage)?.label) || "现象";
-  elements.sessionStageNav.innerHTML = "";
-  stages.forEach((stage, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `stage-pill ${stage.key === currentStage ? "active" : ""}`;
-    button.innerHTML = `<span class="stage-index">0${index + 1}</span><span>${stage.label}</span>`;
-    button.addEventListener("click", () => {
-      elements.workflowStage.value = stage.key;
-      elements.activeStageLabel.textContent = stage.label;
-      renderStageGuidance(stage.key);
-    });
-    elements.sessionStageNav.appendChild(button);
-  });
-  renderStageGuidance(currentStage);
-}
-
-function renderStageGuidance(stageKey) {
-  const current = defaultStageGuidance(stageKey);
-  elements.stageGuidance.innerHTML = `
-    <h3>${current.title}</h3>
-    <div class="result-list">
-      ${current.points.map((point) => `<article class="result-card">${point}</article>`).join("")}
-    </div>
-  `;
-}
-
-function renderLibraryContext(sessionDetail) {
-  const library = sessionDetail?.libraryContext || {};
-  const sessionItems = library.recentSessions || [];
-  const analysisItems = library.recentAnalyses || [];
-  const testCaseItems = library.testCases || [];
-  elements.librarySessions.innerHTML = sessionItems.length
-    ? sessionItems
-        .map(
-          (item) => `
-            <article class="library-item">
-              <strong>${item.title}</strong>
-              <p>${item.issueType || "未分类"} · ${item.severity || "P1"} · ${item.workflowStage || "phenomenon"}</p>
-              <p>${item.symptom || "无现象描述"}</p>
-            </article>
-          `,
-        )
-        .join("")
-    : '<p class="helper">还没有可复用的历史 Session。</p>';
-  elements.libraryAnalyses.innerHTML = analysisItems.length
-    ? analysisItems
-        .map(
-          (item) => `
-            <article class="library-item">
-              <strong>${item.sessionTitle || "未命名会话"}</strong>
-              <p>${item.issueType || "未分类"} · ${item.priority || "P1"} · ${item.riskLevel || "low"}</p>
-              <p>${item.phenomenonSummary || "无摘要"}</p>
-            </article>
-          `,
-        )
-        .join("")
-    : '<p class="helper">还没有历史分析沉淀。</p>';
-  elements.libraryTestCases.innerHTML = testCaseItems.length
-    ? testCaseItems
-        .map(
-          (item) => `
-            <article class="library-item">
-              <strong>${item.caseCode}</strong>
-              <p>${item.name}</p>
-              <p>${item.category || "未分类"} · ${item.target || "未填 target"}</p>
-            </article>
-          `,
-        )
-        .join("")
-    : '<p class="helper">测试库还是空的，先沉淀一条最小验证用例。</p>';
 }
 
 async function apiGet(url) {
@@ -315,13 +252,41 @@ function updateApiKeyStatus(saved) {
   elements.apiKeyStatus.textContent = saved ? "API Key 已保存，页面不显示具体值。" : "未保存 API Key";
 }
 
+function renderWorkflow() {
+  elements.workflowSteps.innerHTML = "";
+  for (const step of workflowState) {
+    const article = document.createElement("article");
+    article.className = `workflow-step ${step.state}`;
+    article.innerHTML = `
+      <div class="step-name">${step.name}</div>
+      <div class="step-state">${step.state.toUpperCase()}</div>
+      <div class="step-detail">${step.detail}</div>
+    `;
+    elements.workflowSteps.appendChild(article);
+  }
+}
+
+function setCurrentView(view) {
+  state.currentView = view;
+  const titles = {
+    overview: ["Overview", "系统入口、状态概览和快速动作。"],
+    test: ["Test Center", "测试数据生产、自动化执行和日志采集。"],
+    analysis: ["Analysis Center", "按强制状态机推进问题闭环。"],
+    library: ["Library", "经验沉淀、根因复用和知识检索。"],
+  };
+  elements.pageTitle.textContent = titles[view][0];
+  elements.pageSubtitle.textContent = titles[view][1];
+  elements.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
+  elements.views.forEach((item) => item.classList.toggle("active", item.id === `view-${view}`));
+}
+
 async function validateSavedProvider() {
   const data = await apiGet("/api/provider/validate");
   const validation = data.validation || {};
   state.apiConfigured = !!data.apiConfigured && !!validation.ok;
-  elements.providerStatus.textContent = validation.ok
-    ? `${data.providerName || "Provider"} 已验证`
-    : `${data.providerName || "Provider"} 未通过验证`;
+  const text = validation.ok ? `${data.providerName || "Provider"} 已验证` : `${data.providerName || "Provider"} 未通过验证`;
+  elements.providerStatus.textContent = text;
+  elements.heroProviderStatus.textContent = validation.ok ? "Ready" : "Error";
   elements.providerStatus.classList.toggle("error", !validation.ok);
   setValidationState(!!validation.ok, validation.message || "未验证");
 }
@@ -338,9 +303,9 @@ async function loadConfig() {
   updateApiKeyStatus(!!data.apiKeySaved);
   if (!data.apiKeySaved) {
     elements.providerStatus.textContent = `${data.providerName || "Provider"} 未配置 API Key`;
+    elements.heroProviderStatus.textContent = "No Key";
     elements.providerStatus.classList.add("error");
     setValidationState(false, "还没有保存 API Key，无法做 AI 自动分析。");
-    window.alert("当前还没有保存 API Key，请先填写并保存 AI 设置。");
     return;
   }
   await validateSavedProvider();
@@ -349,6 +314,55 @@ async function loadConfig() {
 async function loadOverview() {
   state.overview = await apiGet("/api/workbench/overview");
   renderOverview();
+}
+
+function renderOverview() {
+  const counts = state.overview?.counts || {};
+  const items = [
+    ["总 Session 数", counts.sessions || 0],
+    ["未关闭问题", counts.openSessions || 0],
+    ["测试用例数", counts.testCases || 0],
+    ["分析记录数", counts.analyses || 0],
+    ["证据条目数", counts.evidence || 0],
+    ["知识条目数", counts.knowledge || 0],
+  ];
+  elements.overviewCounts.innerHTML = items
+    .map(
+      ([label, value]) => `
+        <article class="overview-card">
+          <div class="overview-value">${value}</div>
+          <div class="overview-label">${label}</div>
+        </article>
+      `,
+    )
+    .join("");
+  renderSimpleList(elements.recentSessions, state.overview?.recentSessions || [], (item) => ({
+    title: item.title,
+    meta: `${item.issueType || "未分类"} · ${item.severity || "P1"} · ${item.updatedAt || ""}`,
+  }));
+  renderSimpleList(elements.recentTests, state.overview?.recentTestRuns || [], (item) => ({
+    title: `${item.report?.caseCode || item.caseId || ""} · ${item.result || ""}`,
+    meta: `${item.deviceModel || ""} · ${item.createdAt || ""}`,
+  }));
+  renderSimpleList(elements.recentKnowledge, state.overview?.recentKnowledge || [], (item) => ({
+    title: item.title,
+    meta: `${(item.tags || []).join(", ") || "无标签"} · ${item.updatedAt || ""}`,
+  }));
+}
+
+function renderSimpleList(target, items, mapper) {
+  target.innerHTML = "";
+  if (!items.length) {
+    target.innerHTML = '<p class="helper">暂无记录。</p>';
+    return;
+  }
+  for (const item of items) {
+    const mapped = mapper(item);
+    const article = document.createElement("article");
+    article.className = "list-item";
+    article.innerHTML = `<strong>${mapped.title}</strong><p>${mapped.meta || ""}</p>`;
+    target.appendChild(article);
+  }
 }
 
 function defaultTestStepsJson() {
@@ -365,85 +379,268 @@ function defaultTestStepsJson() {
   );
 }
 
-function renderSessions() {
-  elements.sessionsList.innerHTML = "";
-  if (!state.sessions.length) {
-    elements.sessionsList.innerHTML = '<p class="helper">还没有会话。先创建一个客户调试会话。</p>';
-    return;
+async function loadSessions() {
+  const data = await apiGet("/api/sessions");
+  state.sessions = data.sessions || [];
+  if (!state.activeSessionId && state.sessions.length) {
+    state.activeSessionId = state.sessions[0].id;
   }
-  for (const session of state.sessions) {
-    const article = document.createElement("article");
-    article.className = `session-chip ${session.id === state.activeSessionId ? "active" : ""}`;
-    article.innerHTML = `
-      <div class="session-chip-head">
-        <div>
-          <div class="session-chip-title">${session.title}</div>
-          <div class="session-chip-meta">${session.customerName || "未填客户"} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"}</div>
-          <div class="session-chip-meta">${session.issueType || "未分类"} · ${session.severity || "P1"} · ${session.workflowStage || "phenomenon"}</div>
-          <div class="session-chip-meta">${session.updatedAt}</div>
-        </div>
-        <div class="inline-actions compact">
-          <button type="button" class="secondary-btn session-select-btn">切换/编辑</button>
-          <button type="button" class="danger-btn session-delete-btn">删除</button>
-        </div>
-      </div>
-    `;
-    article.querySelector(".session-select-btn").addEventListener("click", () => {
-      state.activeSessionId = session.id;
-      if (elements.historySessionsPanel) elements.historySessionsPanel.open = false;
-      loadSessionDetail(session.id).catch(showGenericError);
-    });
-    article.querySelector(".session-delete-btn").addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteSessionById(session.id).catch(showGenericError);
-    });
-    elements.sessionsList.appendChild(article);
+  renderSessionMetaSummary();
+  if (state.activeSessionId) {
+    await loadSessionDetail(state.activeSessionId);
   }
 }
 
-function renderTestCases() {
-  elements.testCasesList.innerHTML = "";
-  elements.testCaseCount.textContent = `${state.testCases.length} 条`;
-  if (!state.testCases.length) {
-    elements.testCasesList.innerHTML = '<p class="helper">还没有测试用例。先新增一条最小串口判定用例。</p>';
+function renderSessionMetaSummary() {
+  const session = state.sessions.find((item) => item.id === state.activeSessionId);
+  if (!session) {
+    elements.activeSessionLabel.textContent = "未选择";
+    elements.executionTarget.textContent = "未选择 Session";
     return;
   }
-  for (const testCase of state.testCases) {
+  elements.activeSessionLabel.textContent = session.title;
+  elements.executionTarget.textContent = `${session.title} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"}`;
+}
+
+async function loadSessionDetail(sessionId) {
+  const data = await apiGet(`/api/sessions/${sessionId}`);
+  state.activeSessionDetail = data;
+  state.currentStepKey = data.workflowStage || data.steps?.find((step) => step.status !== "done")?.step || "phenomenon";
+  const index = state.sessions.findIndex((item) => item.id === data.id);
+  if (index >= 0) {
+    state.sessions[index] = { ...state.sessions[index], ...data };
+  }
+  elements.activeSessionLabel.textContent = `${data.title} · ${data.deviceModel || "未填型号"} · ${data.serialNumber || "未填序号"}`;
+  elements.activeStageLabel.textContent = stageDefinitions[state.currentStepKey]?.title || "现象";
+  elements.sessionTitle.value = data.title || "";
+  elements.sessionCustomer.value = data.customerName || "";
+  elements.deviceModel.value = data.deviceModel || "";
+  elements.serialNumber.value = data.serialNumber || "";
+  elements.issueType.value = data.issueType || "";
+  elements.severity.value = data.severity || "P1";
+  elements.workflowStage.value = data.workflowStage || "phenomenon";
+  elements.sessionSymptom.value = data.symptom || "";
+  elements.owner.value = data.owner || "";
+  elements.deviceIp.value = data.deviceIp || "";
+  renderSessionMetaSummary();
+  renderStageNavigation();
+  renderStepForm();
+  renderEvidencePreview();
+  renderAnalyses(data.analyses || []);
+}
+
+function renderStageNavigation() {
+  const steps = state.activeSessionDetail?.steps || [];
+  const ordered = state.activeSessionDetail?.workflowStages || [];
+  const statuses = Object.fromEntries(steps.map((item) => [item.step, item.status]));
+  elements.sessionStageNav.innerHTML = "";
+  ordered.forEach((stage, index) => {
+    const previousDone = ordered.slice(0, index).every((item) => statuses[item.key] === "done");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `stage-pill ${stage.key === state.currentStepKey ? "active" : ""}`;
+    button.disabled = index > 0 && !previousDone;
+    button.innerHTML = `<span class="stage-index">0${index + 1}</span><span>${stage.label}</span>`;
+    button.addEventListener("click", () => {
+      state.currentStepKey = stage.key;
+      elements.workflowStage.value = stage.key;
+      elements.activeStageLabel.textContent = stage.label;
+      renderStepForm();
+    });
+    elements.sessionStageNav.appendChild(button);
+  });
+}
+
+function getCurrentStepState() {
+  const steps = state.activeSessionDetail?.steps || [];
+  return steps.find((item) => item.step === state.currentStepKey) || { data: {}, status: "pending" };
+}
+
+function renderStepForm() {
+  const definition = stageDefinitions[state.currentStepKey] || stageDefinitions.phenomenon;
+  const current = getCurrentStepState();
+  elements.stepFormTitle.textContent = `${definition.title} · ${current.status === "done" ? "已完成" : "待完成"}`;
+  elements.stageGuidance.innerHTML = `<p>${definition.help}</p>`;
+  elements.stepFormFields.innerHTML = "";
+  definition.fields.forEach((field) => {
+    const label = document.createElement("label");
+    label.className = "step-field";
+    const input = field.type === "textarea" ? document.createElement("textarea") : document.createElement("input");
+    if (field.type !== "textarea") input.type = "text";
+    if (field.rows) input.rows = field.rows;
+    input.id = `step-field-${field.key}`;
+    input.value = current.data?.[field.key] || "";
+    label.innerHTML = `<span>${field.label}</span>`;
+    label.appendChild(input);
+    elements.stepFormFields.appendChild(label);
+  });
+}
+
+function collectCurrentStepPayload() {
+  const definition = stageDefinitions[state.currentStepKey] || stageDefinitions.phenomenon;
+  const data = {};
+  definition.fields.forEach((field) => {
+    data[field.key] = document.getElementById(`step-field-${field.key}`)?.value?.trim() || "";
+  });
+  return data;
+}
+
+async function saveCurrentStep(status = "pending") {
+  requireSession();
+  const data = collectCurrentStepPayload();
+  const response = await apiPost(`/session/${state.activeSessionId}/step`, {
+    step: state.currentStepKey,
+    data,
+    status,
+  });
+  elements.stepSaveResult.textContent = status === "done" ? "当前步骤已标记完成。" : "当前步骤已保存。";
+  await loadSessionDetail(state.activeSessionId);
+  return response.step;
+}
+
+function renderEvidencePreview() {
+  const evidence = state.activeSessionDetail?.evidence || [];
+  const recent = evidence.slice(0, 6);
+  renderSimpleList(elements.recentEvidenceList, recent, (item) => ({
+    title: `${item.title} · ${item.kind}`,
+    meta: `${item.createdAt || ""}${item.fileName ? ` · ${item.fileName}` : ""}`,
+  }));
+  const latestSerial = evidence.find((item) => item.kind === "serial_log");
+  elements.latestSerialOutput.value = latestSerial ? (latestSerial.contentText || "").split(/\r?\n/).slice(-10).join("\n") : "";
+}
+
+async function createSession() {
+  const data = await apiPost("/session/create", {
+    title: elements.sessionTitle.value.trim(),
+    customerName: elements.sessionCustomer.value.trim(),
+    deviceModel: elements.deviceModel.value.trim(),
+    serialNumber: elements.serialNumber.value.trim(),
+    issueType: elements.issueType.value.trim(),
+    severity: elements.severity.value,
+    workflowStage: elements.workflowStage.value,
+    symptom: elements.sessionSymptom.value.trim(),
+    owner: elements.owner.value.trim(),
+    deviceIp: elements.deviceIp.value.trim(),
+  });
+  state.activeSessionId = data.session.id;
+  await Promise.all([loadOverview(), loadSessions(), loadKnowledge()]);
+}
+
+async function saveSessionMeta() {
+  requireSession();
+  await apiPost(`/api/sessions/${state.activeSessionId}/meta`, {
+    title: elements.sessionTitle.value.trim(),
+    customerName: elements.sessionCustomer.value.trim(),
+    deviceModel: elements.deviceModel.value.trim(),
+    serialNumber: elements.serialNumber.value.trim(),
+    issueType: elements.issueType.value.trim(),
+    severity: elements.severity.value,
+    workflowStage: elements.workflowStage.value,
+    symptom: elements.sessionSymptom.value.trim(),
+    owner: elements.owner.value.trim(),
+    deviceIp: elements.deviceIp.value.trim(),
+  });
+  await Promise.all([loadOverview(), loadSessions(), loadKnowledge()]);
+}
+
+async function deleteSession() {
+  requireSession();
+  if (!window.confirm("确定删除当前 Session 及其证据、分析和步骤吗？")) return;
+  const response = await fetch(`/api/sessions/${state.activeSessionId}`, { method: "DELETE" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "delete failed");
+  state.activeSessionId = "";
+  state.activeSessionDetail = null;
+  await Promise.all([loadOverview(), loadSessions(), loadKnowledge()]);
+}
+
+async function saveProviderConfig() {
+  elements.saveProviderBtn.disabled = true;
+  try {
+    const data = await apiPost("/api/provider", {
+      providerName: elements.providerName.value.trim(),
+      apiBaseUrl: elements.apiBaseUrl.value.trim(),
+      apiKey: elements.apiKey.value.trim(),
+      model: elements.providerModelInput.value.trim(),
+    });
+    elements.providerModel.textContent = data.model || "-";
+    elements.apiKey.value = "";
+    updateApiKeyStatus(!!data.apiKeySaved);
+    await validateSavedProvider();
+  } finally {
+    elements.saveProviderBtn.disabled = false;
+  }
+}
+
+async function loadTestCases() {
+  const data = await apiGet("/testcase/list");
+  state.testCases = data.testcases || [];
+  renderTestCases();
+}
+
+function renderTestCases() {
+  elements.testCaseCount.textContent = `${state.testCases.length} 条`;
+  elements.testCasesList.innerHTML = "";
+  if (!state.testCases.length) {
+    elements.testCasesList.innerHTML = '<p class="helper">还没有测试用例。</p>';
+    return;
+  }
+  state.testCases.forEach((testCase) => {
     const article = document.createElement("article");
-    article.className = "session-chip";
+    article.className = `list-item selectable ${state.selectedTestCaseId === testCase.id ? "active" : ""}`;
     article.innerHTML = `
-      <div class="session-chip-head">
-        <div>
-          <div class="session-chip-title">${testCase.caseCode} · ${testCase.name}</div>
-          <div class="session-chip-meta">${testCase.category || "未分类"} · ${testCase.target || "未填 target"} · ${testCase.passRule}</div>
-        </div>
-        <div class="inline-actions compact">
-          <button type="button" class="secondary-btn test-case-load-btn">载入编辑</button>
-          <button type="button" class="test-case-run-btn">执行测试</button>
-        </div>
-      </div>
+      <strong>${testCase.caseCode} · ${testCase.name}</strong>
+      <p>${testCase.category || "未分类"} · ${testCase.target || "未填 target"} · ${testCase.passRule}</p>
     `;
-    article.querySelector(".test-case-load-btn").addEventListener("click", () => {
+    article.addEventListener("click", () => {
+      state.selectedTestCaseId = testCase.id;
       elements.testCaseCode.value = testCase.caseCode || "";
       elements.testCaseName.value = testCase.name || "";
       elements.testCaseCategory.value = testCase.category || "";
       elements.testCaseTarget.value = testCase.target || "";
       elements.testCaseSteps.value = JSON.stringify(testCase.steps || [], null, 2);
       elements.testCaseResult.textContent = `已载入测试用例：${testCase.caseCode}`;
+      renderTestCases();
     });
-    article.querySelector(".test-case-run-btn").addEventListener("click", () => runTestCase(testCase.id).catch(showGenericError));
     elements.testCasesList.appendChild(article);
+  });
+}
+
+async function saveTestCase() {
+  let steps;
+  try {
+    steps = JSON.parse(elements.testCaseSteps.value.trim() || "[]");
+  } catch {
+    throw new Error("Steps JSON 格式不合法。");
   }
+  const data = await apiPost("/testcase", {
+    caseCode: elements.testCaseCode.value.trim(),
+    name: elements.testCaseName.value.trim(),
+    category: elements.testCaseCategory.value.trim(),
+    target: elements.testCaseTarget.value.trim(),
+    steps,
+    passRule: "all_steps_pass",
+    enabled: true,
+  });
+  state.selectedTestCaseId = data.testcase.id;
+  elements.testCaseResult.textContent = `测试用例已保存：${data.testcase.caseCode}`;
+  await Promise.all([loadOverview(), loadTestCases()]);
+}
+
+async function loadTestRuns() {
+  const data = await apiGet("/api/test-runs");
+  state.testRuns = data.testRuns || [];
+  renderTestRuns();
 }
 
 function renderTestRuns() {
-  elements.testRunsHistory.innerHTML = "";
   elements.testRunCount.textContent = `${state.testRuns.length} 条`;
+  elements.testRunsHistory.innerHTML = "";
   if (!state.testRuns.length) {
     elements.testRunsHistory.innerHTML = '<tr><td colspan="7" class="table-empty">还没有测试执行记录。</td></tr>';
     return;
   }
-  for (const run of state.testRuns) {
+  state.testRuns.forEach((run) => {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${run.createdAt || ""}</td>
@@ -455,33 +652,166 @@ function renderTestRuns() {
       <td>${run.generatedSessionId || "-"}</td>
     `;
     elements.testRunsHistory.appendChild(row);
-  }
+  });
 }
 
-function evidenceBody(item) {
-  const metaParts = [];
-  if (item.fileName) metaParts.push(item.fileName);
-  if (item.meta?.port) metaParts.push(`${item.meta.port} @ ${item.meta.baud}`);
-  return {
-    metaText: [item.createdAt, ...metaParts].filter(Boolean).join(" · "),
-    bodyText: item.contentText || JSON.stringify(item.meta || {}, null, 2),
-  };
+async function runSelectedTestCase() {
+  requireSession();
+  requireTestCase();
+  const data = await apiPost("/testrun/execute", {
+    testcaseId: state.selectedTestCaseId,
+    sessionId: state.activeSessionId,
+  });
+  elements.testCaseResult.textContent = data.testrun.result === "fail"
+    ? `测试失败，已自动生成 Session：${data.generatedSessionId || "-"}`
+    : `测试通过：${data.testrun.report?.caseCode || ""}`;
+  await Promise.all([loadOverview(), loadSessions(), loadTestRuns(), loadKnowledge()]);
 }
 
-function renderEvidence(evidence) {
-  if (!elements.latestSerialOutput) {
+async function uploadMaterial() {
+  requireSession();
+  const file = elements.materialFile.files[0];
+  if (!file) throw new Error("请选择要上传的资料文件。");
+  const formData = new FormData();
+  formData.append("sessionId", state.activeSessionId);
+  formData.append("title", elements.materialTitle.value.trim());
+  formData.append("file", file);
+  const response = await fetch("/api/upload", { method: "POST", body: formData });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "upload failed");
+  elements.materialResult.textContent = `资料已导入：${data.evidence.title}`;
+  elements.materialTitle.value = "";
+  elements.materialFile.value = "";
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+}
+
+async function saveLog() {
+  requireSession();
+  const content = elements.logContent.value.trim();
+  if (!content) throw new Error("请先粘贴串口日志。");
+  await apiPost(`/api/sessions/${state.activeSessionId}/logs`, {
+    title: elements.logTitle.value.trim(),
+    content,
+  });
+  elements.logTitle.value = "";
+  elements.logContent.value = "";
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+}
+
+async function uploadLogFile() {
+  requireSession();
+  const file = elements.logFileInput.files[0];
+  if (!file) throw new Error("请选择串口日志文件。");
+  const formData = new FormData();
+  formData.append("sessionId", state.activeSessionId);
+  formData.append("title", elements.logFileTitle.value.trim());
+  formData.append("file", file);
+  const response = await fetch("/api/log-upload", { method: "POST", body: formData });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "upload failed");
+  elements.logFileResult.textContent = `串口文件已导入：${data.evidence.title}`;
+  elements.logFileTitle.value = "";
+  elements.logFileInput.value = "";
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+}
+
+async function saveImportedInfo() {
+  requireSession();
+  const content = elements.infoContent.value.trim();
+  const file = elements.infoFile.files[0];
+  if (!content && !file) throw new Error("请先填写信息内容或选择附件。");
+  const formData = new FormData();
+  formData.append("sessionId", state.activeSessionId);
+  formData.append("title", elements.infoTitle.value.trim());
+  formData.append("content", content);
+  if (file) formData.append("file", file);
+  const response = await fetch("/api/info-upload", { method: "POST", body: formData });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "upload failed");
+  elements.infoResult.textContent = `导入完成：${data.evidence.title}`;
+  elements.infoTitle.value = "";
+  elements.infoContent.value = "";
+  elements.infoFile.value = "";
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+}
+
+async function captureSnapshot() {
+  requireSession();
+  const deviceIp = elements.deviceIp.value.trim();
+  if (!deviceIp) throw new Error("请先填写设备 IP。");
+  const data = await apiPost(`/api/sessions/${state.activeSessionId}/snapshot`, { deviceIp });
+  elements.snapshotResult.textContent = `抓拍已保存：${data.evidence.title}`;
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+}
+
+async function loadSerialPorts() {
+  const data = await apiGet("/api/serial/ports");
+  elements.serialPortSelect.innerHTML = "";
+  const ports = data.ports || [];
+  if (!ports.length) {
+    elements.serialPortSelect.innerHTML = '<option value="">未发现串口</option>';
     return;
   }
-  const latestSerial = evidence.find((item) => item.kind === "serial_log");
-  elements.latestSerialOutput.value = latestSerial
-    ? (latestSerial.contentText || "").split(/\r?\n/).slice(-10).join("\n")
-    : "";
+  ports.forEach((port) => {
+    const option = document.createElement("option");
+    option.value = port.device;
+    option.textContent = `${port.device} · ${port.description}`;
+    elements.serialPortSelect.appendChild(option);
+  });
+}
+
+function renderSerialStatus(status) {
+  state.serialStatus = status;
+  if (!status) {
+    elements.serialCaptureStatus.textContent = "未启动串口自动抓取。";
+    return;
+  }
+  if (status.running) {
+    elements.serialCaptureStatus.textContent = `正在抓取：${status.port} @ ${status.baud}，已采集 ${status.lines} 行，约 ${status.bytes} bytes。`;
+  } else if (status.lastError) {
+    elements.serialCaptureStatus.textContent = `串口抓取已停止，异常：${status.lastError}`;
+  } else if (status.port) {
+    elements.serialCaptureStatus.textContent = `串口抓取已停止：${status.port} @ ${status.baud}，共 ${status.lines} 行。`;
+  } else {
+    elements.serialCaptureStatus.textContent = "未启动串口自动抓取。";
+  }
+}
+
+async function pollSerialStatus() {
+  const data = await apiGet("/api/serial/status");
+  renderSerialStatus(data.status);
+  if (data.status?.running && state.activeSessionId === data.status.sessionId) {
+    await loadSessionDetail(state.activeSessionId);
+  }
+}
+
+function startSerialPolling() {
+  if (serialPollTimer) clearInterval(serialPollTimer);
+  serialPollTimer = setInterval(() => pollSerialStatus().catch(console.error), 2000);
+}
+
+async function startSerialCapture() {
+  requireSession();
+  const port = elements.serialPortSelect.value;
+  const baud = Number(elements.serialBaud.value || 115200);
+  if (!port) throw new Error("请先选择串口端口。");
+  const data = await apiPost("/api/serial/start", { sessionId: state.activeSessionId, port, baud });
+  renderSerialStatus(data.status);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+}
+
+async function stopSerialCapture() {
+  const data = await apiPost("/api/serial/stop", {});
+  renderSerialStatus(data.status);
+  if (state.activeSessionId) {
+    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+  }
 }
 
 function createListSection(title, items) {
   const section = document.createElement("section");
   section.className = "result-block";
-  section.innerHTML = `<h3>${title}</h3>`;
+  section.innerHTML = `<h4>${title}</h4>`;
   if (!items || !items.length) {
     section.innerHTML += '<p class="helper">无</p>';
     return section;
@@ -494,12 +824,10 @@ function createListSection(title, items) {
     if (typeof item === "string") {
       card.textContent = item;
     } else {
-      const lines = [];
-      Object.entries(item).forEach(([key, value]) => {
-        if (value === null || value === undefined || value === "") return;
-        lines.push(`${key}: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`);
-      });
-      card.textContent = lines.join("\n");
+      card.textContent = Object.entries(item)
+        .filter(([, value]) => value !== null && value !== undefined && value !== "")
+        .map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`)
+        .join("\n");
     }
     list.appendChild(card);
   });
@@ -507,30 +835,19 @@ function createListSection(title, items) {
   return section;
 }
 
-function formatAnalysisForCompare(analysis) {
-  const wrapper = document.createElement("article");
-  wrapper.className = "compare-card";
-  wrapper.appendChild(createListSection("分析摘要", [analysis.result?.phenomenon_summary || "无"]));
-  wrapper.appendChild(createListSection("已用证据", analysis.result?.evidence_used || []));
-  wrapper.appendChild(createListSection("可能原因", analysis.result?.possible_causes || []));
-  wrapper.appendChild(createListSection("验证步骤", analysis.result?.validation_steps || []));
-  return wrapper;
-}
-
-function renderCompareArea(analyses) {
-  elements.analysisCompare.innerHTML = "";
-  const selected = analyses.filter((item) => state.selectedCompareIds.includes(item.id)).slice(0, 2);
-  if (selected.length !== 2) return;
-  const grid = document.createElement("div");
-  grid.className = "compare-grid";
-  selected.forEach((analysis) => {
-    const column = document.createElement("section");
-    column.className = "compare-column";
-    column.innerHTML = `<h3>${analysis.createdAt}</h3><p class="helper">${analysis.requestText}</p>`;
-    column.appendChild(formatAnalysisForCompare(analysis));
-    grid.appendChild(column);
-  });
-  elements.analysisCompare.appendChild(grid);
+function renderAnalysisGuidance(result) {
+  elements.analysisGuidance.innerHTML = "";
+  const missing = state.lastMissingInfo || [];
+  const recommended = state.lastSuggestedTests || [];
+  elements.analysisGuidance.appendChild(createListSection("缺失信息", missing));
+  elements.analysisGuidance.appendChild(createListSection("推荐测试用例", recommended.map((item) => `${item.caseCode} · ${item.name} · score=${item.score}`)));
+  elements.analysisGuidance.appendChild(createListSection("流程化引导", result?.workflow_guidance || []));
+  const relatedAssets = result?.related_assets || {};
+  elements.analysisGuidance.appendChild(createListSection("相关资产", [
+    ...(relatedAssets.recommended_test_cases || []).map((item) => `TestCase: ${item}`),
+    ...(relatedAssets.similar_session_hints || []).map((item) => `Session: ${item}`),
+    ...(relatedAssets.reusable_patterns || []).map((item) => `Pattern: ${item}`),
+  ]));
 }
 
 function createSummaryField(label, id, value, type = "text", options = []) {
@@ -564,7 +881,7 @@ function renderReadableAnalysis(analysis) {
   state.latestAnalysis = analysis;
   if (!analysis || !analysis.result || typeof analysis.result !== "object") {
     elements.analysisResult.textContent = "尚未分析";
-    elements.analysisGuidance.innerHTML = '<p class="helper">等待结构化分析后，这里会显示按流程整理的引导建议。</p>';
+    renderAnalysisGuidance(null);
     return;
   }
   const result = analysis.result;
@@ -573,7 +890,7 @@ function renderReadableAnalysis(analysis) {
   summaryGrid.appendChild(createSummaryField("测试时间", "summary-test-time", result.test_time || analysis.createdAt || ""));
   summaryGrid.appendChild(createSummaryField("设备型号", "summary-device-model", result.device_model || ""));
   summaryGrid.appendChild(createSummaryField("序号", "summary-serial-number", result.serial_number || ""));
-  summaryGrid.appendChild(createSummaryField("优先级", "summary-priority", result.priority || "P1", "select", ["P0", "P1", "P2"]));
+  summaryGrid.appendChild(createSummaryField("优先级", "summary-priority", result.priority || "P1", "select", ["P0", "P1", "P2", "P3"]));
   summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", result.risk_level || "low", "select", ["low", "medium", "high", "critical"]));
   elements.analysisResult.appendChild(summaryGrid);
   elements.analysisResult.appendChild(createSummaryField("现象总结", "summary-phenomenon", result.phenomenon_summary || "", "textarea"));
@@ -586,40 +903,46 @@ function renderReadableAnalysis(analysis) {
   renderAnalysisGuidance(result);
 }
 
-function renderAnalysisGuidance(result) {
-  const sections = [];
-  sections.push(createListSection("流程引导", result.workflow_guidance || []));
-  const relatedAssets = result.related_assets || {};
-  sections.push(
-    createListSection("推荐测试用例", (relatedAssets.recommended_test_cases || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))),
-  );
-  sections.push(
-    createListSection("相似 Session 提示", (relatedAssets.similar_session_hints || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))),
-  );
-  sections.push(
-    createListSection("可复用规则", (relatedAssets.reusable_patterns || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))),
-  );
-  elements.analysisGuidance.innerHTML = "";
-  sections.forEach((section) => elements.analysisGuidance.appendChild(section));
+function formatAnalysisForCompare(analysis) {
+  const wrapper = document.createElement("article");
+  wrapper.className = "compare-card";
+  wrapper.appendChild(createListSection("分析摘要", [analysis.result?.phenomenon_summary || "无"]));
+  wrapper.appendChild(createListSection("分层分析", analysis.result?.layered_analysis || []));
+  wrapper.appendChild(createListSection("可能原因", analysis.result?.possible_causes || []));
+  wrapper.appendChild(createListSection("验证步骤", analysis.result?.validation_steps || []));
+  return wrapper;
+}
+
+function renderCompareArea(analyses) {
+  elements.analysisCompare.innerHTML = "";
+  const selected = analyses.filter((item) => state.selectedCompareIds.includes(item.id)).slice(0, 2);
+  if (selected.length !== 2) return;
+  const grid = document.createElement("div");
+  grid.className = "compare-grid";
+  selected.forEach((analysis) => {
+    const column = document.createElement("section");
+    column.className = "compare-column";
+    column.innerHTML = `<h4>${analysis.createdAt}</h4><p class="helper">${analysis.requestText}</p>`;
+    column.appendChild(formatAnalysisForCompare(analysis));
+    grid.appendChild(column);
+  });
+  elements.analysisCompare.appendChild(grid);
 }
 
 function renderAnalyses(analyses) {
   elements.analysisCount.textContent = `${analyses.length} 条`;
   elements.analysisHistory.innerHTML = "";
-  elements.analysisCompare.innerHTML = "";
   if (!analyses.length) {
     elements.analysisHistory.innerHTML = '<tr><td colspan="9" class="table-empty">还没有结构化分析结果。</td></tr>';
     renderReadableAnalysis(null);
     return;
   }
   renderReadableAnalysis(analyses[0]);
-  for (const analysis of analyses) {
+  analyses.forEach((analysis) => {
     const row = document.createElement("tr");
     row.className = "analysis-row";
     row.innerHTML = `
-      <td class="table-check-cell">
-        <input type="checkbox" data-analysis-id="${analysis.id}">
-      </td>
+      <td class="table-check-cell"><input type="checkbox" data-analysis-id="${analysis.id}"></td>
       <td>${analysis.createdAt || ""}</td>
       <td>${analysis.result?.test_time || analysis.createdAt || ""}</td>
       <td>${analysis.result?.device_model || ""}</td>
@@ -642,405 +965,50 @@ function renderAnalyses(analyses) {
       renderAnalyses(analyses);
     });
     elements.analysisHistory.appendChild(row);
-  }
+  });
   renderCompareArea(analyses);
 }
 
-async function loadSessions() {
-  const data = await apiGet("/api/sessions");
-  state.sessions = data.sessions || [];
-  if (!state.activeSessionId && state.sessions.length) {
-    state.activeSessionId = state.sessions[0].id;
-  }
-  renderSessions();
-  if (state.activeSessionId) {
-    await loadSessionDetail(state.activeSessionId);
-  } else {
-    elements.activeSessionLabel.textContent = "未选择";
-    elements.activeStageLabel.textContent = "现象";
-    renderStageGuidance("phenomenon");
-    elements.sessionStageNav.innerHTML = "";
-    elements.librarySessions.innerHTML = '<p class="helper">请选择或新建会话。</p>';
-    elements.libraryAnalyses.innerHTML = '<p class="helper">请选择或新建会话。</p>';
-    elements.libraryTestCases.innerHTML = '<p class="helper">测试库会在这里显示。</p>';
-    renderEvidence([]);
-    renderAnalyses([]);
-  }
-}
-
-async function loadTestCases() {
-  const data = await apiGet("/api/test-cases");
-  state.testCases = data.testCases || [];
-  renderTestCases();
-}
-
-async function loadTestRuns() {
-  const data = await apiGet("/api/test-runs");
-  state.testRuns = data.testRuns || [];
-  renderTestRuns();
-}
-
-async function loadSessionDetail(sessionId) {
-  const data = await apiGet(`/api/sessions/${sessionId}`);
-  state.activeSessionDetail = data;
-  const index = state.sessions.findIndex((item) => item.id === data.id);
-  if (index >= 0) state.sessions[index] = { ...state.sessions[index], ...data };
-  elements.activeSessionLabel.textContent = `${data.title} · ${data.deviceModel || "未填型号"} · ${data.serialNumber || "未填序号"}`;
-  elements.sessionTitle.value = data.title || "";
-  elements.sessionCustomer.value = data.customerName || "";
-  elements.deviceModel.value = data.deviceModel || "";
-  elements.serialNumber.value = data.serialNumber || "";
-  elements.issueType.value = data.issueType || "";
-  elements.severity.value = data.severity || "P1";
-  elements.workflowStage.value = data.workflowStage || "phenomenon";
-  elements.sessionSymptom.value = data.symptom || "";
-  elements.owner.value = data.owner || "";
-  elements.deviceIp.value = data.deviceIp || "";
-  renderSessions();
-  renderStageNav(data);
-  renderLibraryContext(data);
-  renderEvidence(data.evidence || []);
-  renderAnalyses(data.analyses || []);
-}
-
-async function createSession() {
-  const data = await apiPost("/api/sessions", {
-    title: elements.sessionTitle.value.trim(),
-    customerName: elements.sessionCustomer.value.trim(),
-    deviceModel: elements.deviceModel.value.trim(),
-    serialNumber: elements.serialNumber.value.trim(),
-    issueType: elements.issueType.value.trim(),
-    severity: elements.severity.value,
-    workflowStage: elements.workflowStage.value,
-    symptom: elements.sessionSymptom.value.trim(),
-    owner: elements.owner.value.trim(),
-    deviceIp: elements.deviceIp.value.trim(),
-  });
-  state.activeSessionId = data.session.id;
-  await Promise.all([loadOverview(), loadSessions()]);
-}
-
-async function saveSessionMeta() {
+async function suggestMissingInfo() {
   requireSession();
-  await apiPost(`/api/sessions/${state.activeSessionId}/meta`, {
-    title: elements.sessionTitle.value.trim(),
-    customerName: elements.sessionCustomer.value.trim(),
-    deviceModel: elements.deviceModel.value.trim(),
-    serialNumber: elements.serialNumber.value.trim(),
-    issueType: elements.issueType.value.trim(),
-    severity: elements.severity.value,
-    workflowStage: elements.workflowStage.value,
-    symptom: elements.sessionSymptom.value.trim(),
-    owner: elements.owner.value.trim(),
-    deviceIp: elements.deviceIp.value.trim(),
-  });
-  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+  const data = await apiPost("/ai/missing-info", { sessionId: state.activeSessionId });
+  state.lastMissingInfo = data.missingInformation || [];
+  renderAnalysisGuidance(state.latestAnalysis?.result || null);
 }
 
-async function deleteSession() {
+async function suggestTestCases() {
   requireSession();
-  if (!window.confirm("确定删除当前会话及其证据、分析历史吗？")) return;
-  const response = await fetch(`/api/sessions/${state.activeSessionId}`, { method: "DELETE" });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "delete failed");
-  state.activeSessionId = "";
-  state.selectedCompareIds = [];
-  await Promise.all([loadOverview(), loadSessions()]);
-}
-
-async function deleteSessionById(sessionId) {
-  if (!window.confirm("确定删除这个历史会话及其全部证据、分析吗？")) return;
-  const response = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "delete failed");
-  if (state.activeSessionId === sessionId) {
-    state.activeSessionId = "";
-    state.selectedCompareIds = [];
-  }
-  await Promise.all([loadOverview(), loadSessions()]);
-}
-
-async function saveProviderConfig() {
-  elements.saveProviderBtn.disabled = true;
-  elements.providerSaveResult.textContent = "保存中...";
-  try {
-    const data = await apiPost("/api/provider", {
-      providerName: elements.providerName.value.trim(),
-      apiBaseUrl: elements.apiBaseUrl.value.trim(),
-      apiKey: elements.apiKey.value.trim(),
-      model: elements.providerModelInput.value.trim(),
-    });
-    elements.providerModel.textContent = data.model || "-";
-    elements.apiKey.value = "";
-    updateApiKeyStatus(!!data.apiKeySaved);
-    await validateSavedProvider();
-  } finally {
-    elements.saveProviderBtn.disabled = false;
-  }
-}
-
-async function uploadMaterial() {
-  requireSession();
-  const file = elements.materialFile.files[0];
-  if (!file) {
-    window.alert("请选择要上传的资料文件。");
-    return;
-  }
-  const formData = new FormData();
-  formData.append("sessionId", state.activeSessionId);
-  formData.append("title", elements.materialTitle.value.trim());
-  formData.append("file", file);
-  elements.uploadMaterialBtn.disabled = true;
-  elements.materialResult.textContent = "上传中...";
-  try {
-    const response = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "upload failed");
-    elements.materialResult.textContent = `资料已导入：${data.evidence.title}`;
-    elements.materialTitle.value = "";
-    elements.materialFile.value = "";
-    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
-  } finally {
-    elements.uploadMaterialBtn.disabled = false;
-  }
-}
-
-async function saveTestCase() {
-  let steps;
-  try {
-    steps = JSON.parse(elements.testCaseSteps.value.trim() || "[]");
-  } catch (error) {
-    throw new Error("Steps JSON 格式不合法。");
-  }
-  const data = await apiPost("/api/test-cases", {
-    caseCode: elements.testCaseCode.value.trim(),
-    name: elements.testCaseName.value.trim(),
-    category: elements.testCaseCategory.value.trim(),
-    target: elements.testCaseTarget.value.trim(),
-    steps,
-    passRule: "all_steps_pass",
-    enabled: true,
-  });
-  elements.testCaseResult.textContent = `测试用例已保存：${data.testCase.caseCode}`;
-  await Promise.all([loadOverview(), loadTestCases()]);
-}
-
-async function runTestCase(testCaseId) {
-  requireSession();
-  const data = await apiPost(`/api/test-cases/${testCaseId}/run`, {
-    sessionId: state.activeSessionId,
-  });
-  const run = data.run || {};
-  elements.testCaseResult.textContent =
-    run.result === "fail"
-      ? `测试失败，已自动生成问题 session：${data.generatedSessionId || "-"}`
-      : `测试通过：${run.report?.caseCode || ""}`;
-  await Promise.all([loadOverview(), loadSessions(), loadTestRuns()]);
-}
-
-async function uploadLogFile() {
-  requireSession();
-  const file = elements.logFileInput.files[0];
-  if (!file) {
-    window.alert("请选择串口日志文件。");
-    return;
-  }
-  const formData = new FormData();
-  formData.append("sessionId", state.activeSessionId);
-  formData.append("title", elements.logFileTitle.value.trim());
-  formData.append("file", file);
-  elements.uploadLogFileBtn.disabled = true;
-  elements.logFileResult.textContent = "导入中...";
-  try {
-    const response = await fetch("/api/log-upload", { method: "POST", body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "upload failed");
-    elements.logFileResult.textContent = `串口文件已导入：${data.evidence.title}`;
-    elements.logFileTitle.value = "";
-    elements.logFileInput.value = "";
-    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
-  } finally {
-    elements.uploadLogFileBtn.disabled = false;
-  }
-}
-
-async function saveLog() {
-  requireSession();
-  const content = elements.logContent.value.trim();
-  if (!content) {
-    window.alert("请先粘贴串口日志。");
-    return;
-  }
-  await apiPost(`/api/sessions/${state.activeSessionId}/logs`, {
-    title: elements.logTitle.value.trim(),
-    content,
-  });
-  elements.logTitle.value = "";
-  elements.logContent.value = "";
-  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
-}
-
-async function saveImportedInfo() {
-  requireSession();
-  const content = elements.infoContent.value.trim();
-  const file = elements.infoFile.files[0];
-  if (!content && !file) {
-    window.alert("请先填写信息内容或选择附件。");
-    return;
-  }
-  const formData = new FormData();
-  formData.append("sessionId", state.activeSessionId);
-  formData.append("title", elements.infoTitle.value.trim());
-  formData.append("content", content);
-  if (file) formData.append("file", file);
-  elements.saveInfoBtn.disabled = true;
-  elements.infoResult.textContent = "导入中...";
-  try {
-    const response = await fetch("/api/info-upload", { method: "POST", body: formData });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "upload failed");
-    elements.infoResult.textContent = `导入完成：${data.evidence.title}`;
-    elements.infoTitle.value = "";
-    elements.infoContent.value = "";
-    elements.infoFile.value = "";
-    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
-  } finally {
-    elements.saveInfoBtn.disabled = false;
-  }
-}
-
-async function captureSnapshot() {
-  requireSession();
-  const deviceIp = elements.deviceIp.value.trim();
-  if (!deviceIp) {
-    window.alert("请先填写设备 IP。");
-    return;
-  }
-  elements.snapshotResult.textContent = "抓拍中...";
-  const data = await apiPost(`/api/sessions/${state.activeSessionId}/snapshot`, { deviceIp });
-  elements.snapshotResult.textContent = `抓拍已保存：${data.evidence.title}`;
-  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
-}
-
-function renderSerialPorts(ports) {
-  elements.serialPortSelect.innerHTML = "";
-  if (!ports.length) {
-    elements.serialPortSelect.innerHTML = '<option value="">未发现串口</option>';
-    return;
-  }
-  for (const port of ports) {
-    const option = document.createElement("option");
-    option.value = port.device;
-    option.textContent = `${port.device} · ${port.description}`;
-    elements.serialPortSelect.appendChild(option);
-  }
-}
-
-async function loadSerialPorts() {
-  const data = await apiGet("/api/serial/ports");
-  renderSerialPorts(data.ports || []);
-}
-
-function renderSerialStatus(status) {
-  state.serialStatus = status;
-  if (!status) {
-    elements.serialCaptureStatus.textContent = "未启动串口自动抓取。";
-    return;
-  }
-  if (status.running) {
-    elements.serialCaptureStatus.textContent = `正在抓取：${status.port} @ ${status.baud}，已采集 ${status.lines} 行，约 ${status.bytes} bytes。`;
-  } else if (status.lastError) {
-    elements.serialCaptureStatus.textContent = `串口抓取已停止，异常：${status.lastError}`;
-  } else if (status.port) {
-    elements.serialCaptureStatus.textContent = `串口抓取已停止：${status.port} @ ${status.baud}，共 ${status.lines} 行。`;
-  } else {
-    elements.serialCaptureStatus.textContent = "未启动串口自动抓取。";
-  }
-}
-
-async function pollSerialStatus() {
-  const data = await apiGet("/api/serial/status");
-  renderSerialStatus(data.status);
-  if (data.status?.running && state.activeSessionId === data.status.sessionId) {
-    await loadSessionDetail(state.activeSessionId);
-  }
-}
-
-function startSerialPolling() {
-  if (serialPollTimer) clearInterval(serialPollTimer);
-  serialPollTimer = setInterval(() => {
-    pollSerialStatus().catch(console.error);
-  }, 2000);
-}
-
-async function startSerialCapture() {
-  requireSession();
-  const port = elements.serialPortSelect.value;
-  const baud = Number(elements.serialBaud.value || 115200);
-  if (!port) {
-    window.alert("请先选择串口端口。");
-    return;
-  }
-  const data = await apiPost("/api/serial/start", { sessionId: state.activeSessionId, port, baud });
-  renderSerialStatus(data.status);
-  elements.latestSerialOutput.value = "";
-  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
-}
-
-async function stopSerialCapture() {
-  const data = await apiPost("/api/serial/stop", {});
-  renderSerialStatus(data.status);
-  if (state.activeSessionId) await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+  const data = await apiPost("/ai/suggest-testcase", { sessionId: state.activeSessionId });
+  state.lastSuggestedTests = data.recommendations || [];
+  renderAnalysisGuidance(state.latestAnalysis?.result || null);
 }
 
 async function runAnalysis() {
   requireSession();
-  if (!state.apiConfigured) {
-    window.alert("请先通过 AI 验证。");
-    return;
-  }
+  if (!state.apiConfigured) throw new Error("请先通过 AI 验证。");
   resetWorkflow();
-  updateWorkflow("session", "running", "正在读取当前会话、资料、日志和备注...");
+  updateWorkflow("session", "running", "正在读取当前 Session、步骤、证据和历史沉淀...");
   updateWorkflow("provider", "running", "准备使用当前 AI 配置...");
-  const captureSnapshotBefore = elements.captureBeforeAnalyze.checked;
   const deviceIp = elements.deviceIp.value.trim();
-  updateWorkflow("session", "success", `已选中会话 ${state.activeSessionId}。`);
-  updateWorkflow("snapshot", captureSnapshotBefore ? "running" : "success", captureSnapshotBefore ? "分析前将补充一张设备抓拍。" : "本轮不补充抓拍。");
-  elements.analyzeBtn.disabled = true;
-  try {
-    const data = await apiPost(`/api/sessions/${state.activeSessionId}/analyze`, {
-      requestText: elements.analysisRequest.value.trim(),
-      deviceIp,
-      captureSnapshot: captureSnapshotBefore,
-    });
-    updateWorkflow("snapshot", "success", captureSnapshotBefore ? "抓拍成功并已入库。" : "未启用抓拍。");
-    updateWorkflow("provider", "success", "AI 配置可用。");
-    updateWorkflow("request", "success", `请求已发送，请求ID：${data.requestId}`);
-    updateWorkflow("response", "success", "结构化结果已解析并入库。");
-    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
-  } catch (error) {
-    const message = error.message || "分析失败";
-    if (message.includes("Snapshot")) {
-      updateWorkflow("snapshot", "error", message);
-      updateWorkflow("request", "pending", "因抓拍失败未继续。");
-    } else if (message.includes("JSON")) {
-      updateWorkflow("request", "success", "AI 已返回文本。");
-      updateWorkflow("response", "error", message);
-    } else {
-      updateWorkflow("request", "error", message);
-    }
-    window.alert(message);
-  } finally {
-    elements.analyzeBtn.disabled = false;
-  }
+  const captureSnapshot = elements.captureBeforeAnalyze.checked;
+  updateWorkflow("session", "success", `已选中 Session ${state.activeSessionId}。`);
+  updateWorkflow("snapshot", captureSnapshot ? "running" : "success", captureSnapshot ? "分析前将补一张抓拍。" : "本轮不补抓拍。");
+  const data = await apiPost("/ai/analyze", {
+    sessionId: state.activeSessionId,
+    requestText: elements.analysisRequest.value.trim(),
+    deviceIp,
+    captureSnapshot,
+  });
+  updateWorkflow("snapshot", "success", captureSnapshot ? "抓拍成功并已入库。" : "未启用抓拍。");
+  updateWorkflow("provider", "success", "AI 配置可用。");
+  updateWorkflow("request", "success", `请求已发送，请求ID：${data.requestId}`);
+  updateWorkflow("response", "success", "结构化结果已解析并入库。");
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadKnowledge()]);
 }
 
 async function saveAnalysisSummary() {
   requireSession();
-  if (!state.latestAnalysis) {
-    window.alert("当前没有可保存的分析结果。");
-    return;
-  }
+  if (!state.latestAnalysis) throw new Error("当前没有可保存的分析结果。");
   const result = { ...state.latestAnalysis.result };
   result.test_time = document.getElementById("summary-test-time")?.value || "";
   result.device_model = document.getElementById("summary-device-model")?.value || "";
@@ -1052,46 +1020,97 @@ async function saveAnalysisSummary() {
     analysisId: state.latestAnalysis.id,
     result,
   });
-  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadKnowledge()]);
 }
 
 function compareSelectedAnalyses() {
-  const count = state.selectedCompareIds.length;
-  if (count !== 2) {
+  if (state.selectedCompareIds.length !== 2) {
     window.alert("请先勾选两条分析记录。");
     return;
   }
-  const current = Array.from(elements.analysisHistory.children);
-  if (current.length) {
-    elements.analysisCompare.scrollIntoView({ behavior: "smooth", block: "start" });
+  elements.analysisCompare.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadKnowledge(keyword = "") {
+  const data = await apiGet(`/knowledge/search${keyword ? `?q=${encodeURIComponent(keyword)}` : ""}`);
+  state.knowledge = data.knowledge || [];
+  if (!state.selectedKnowledgeId && state.knowledge.length) {
+    state.selectedKnowledgeId = state.knowledge[0].id;
+  }
+  renderKnowledge();
+}
+
+function renderKnowledge() {
+  elements.knowledgeList.innerHTML = "";
+  if (!state.knowledge.length) {
+    elements.knowledgeList.innerHTML = '<p class="helper">还没有沉淀到知识库的条目。</p>';
+    elements.knowledgeDetail.innerHTML = '<p class="helper">从一个完成的 Session 生成知识条目后，这里会显示详情。</p>';
+    return;
+  }
+  state.knowledge.forEach((item) => {
+    const article = document.createElement("article");
+    article.className = `list-item selectable ${state.selectedKnowledgeId === item.id ? "active" : ""}`;
+    article.innerHTML = `<strong>${item.title}</strong><p>${(item.tags || []).join(", ") || "无标签"} · ${item.updatedAt || ""}</p>`;
+    article.addEventListener("click", () => {
+      state.selectedKnowledgeId = item.id;
+      renderKnowledge();
+    });
+    elements.knowledgeList.appendChild(article);
+  });
+  const detail = state.knowledge.find((item) => item.id === state.selectedKnowledgeId) || state.knowledge[0];
+  if (detail) {
+    elements.knowledgeDetail.innerHTML = "";
+    elements.knowledgeDetail.appendChild(createListSection("问题描述 / 标题", [detail.title]));
+    elements.knowledgeDetail.appendChild(createListSection("根因", [detail.rootCause || "无"]));
+    elements.knowledgeDetail.appendChild(createListSection("解决方案", [detail.solution || "无"]));
+    elements.knowledgeDetail.appendChild(createListSection("验证方法", [detail.validation || "无"]));
+    elements.knowledgeDetail.appendChild(createListSection("关联 TestCase", (detail.relatedCases || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))));
+    elements.knowledgeDetail.appendChild(createListSection("标签", (detail.tags || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))));
   }
 }
 
+async function createKnowledgeFromCurrentSession() {
+  requireSession();
+  const data = await apiPost("/knowledge/create", { sessionId: state.activeSessionId });
+  state.selectedKnowledgeId = data.knowledge.id;
+  await Promise.all([loadOverview(), loadKnowledge()]);
+  setCurrentView("library");
+}
+
+elements.navItems.forEach((item) => item.addEventListener("click", () => setCurrentView(item.dataset.view)));
 elements.saveProviderBtn.addEventListener("click", () => saveProviderConfig().catch(showGenericError));
 elements.createSessionBtn.addEventListener("click", () => createSession().catch(showGenericError));
 elements.saveSessionMetaBtn.addEventListener("click", () => saveSessionMeta().catch(showGenericError));
 elements.deleteSessionBtn.addEventListener("click", () => deleteSession().catch(showGenericError));
-elements.uploadMaterialBtn.addEventListener("click", () => uploadMaterial().catch(showGenericError));
+elements.qaNewSession.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+elements.qaImportMaterial.addEventListener("click", () => setCurrentView("analysis"));
+elements.qaStartTest.addEventListener("click", () => setCurrentView("test"));
+elements.qaStartAnalysis.addEventListener("click", () => setCurrentView("analysis"));
 elements.saveTestCaseBtn.addEventListener("click", () => saveTestCase().catch(showGenericError));
-elements.saveLogBtn.addEventListener("click", () => saveLog().catch(showGenericError));
-elements.uploadLogFileBtn.addEventListener("click", () => uploadLogFile().catch(showGenericError));
+elements.runSelectedTestBtn.addEventListener("click", () => runSelectedTestCase().catch(showGenericError));
 elements.refreshSerialPortsBtn.addEventListener("click", () => loadSerialPorts().catch(showGenericError));
 elements.startSerialCaptureBtn.addEventListener("click", () => startSerialCapture().catch(showGenericError));
 elements.stopSerialCaptureBtn.addEventListener("click", () => stopSerialCapture().catch(showGenericError));
+elements.saveLogBtn.addEventListener("click", () => saveLog().catch(showGenericError));
+elements.uploadLogFileBtn.addEventListener("click", () => uploadLogFile().catch(showGenericError));
+elements.saveStepBtn.addEventListener("click", () => saveCurrentStep("pending").catch(showGenericError));
+elements.markStepDoneBtn.addEventListener("click", () => saveCurrentStep("done").catch(showGenericError));
+elements.suggestMissingBtn.addEventListener("click", () => suggestMissingInfo().catch(showGenericError));
+elements.suggestTestsBtn.addEventListener("click", () => suggestTestCases().catch(showGenericError));
+elements.analyzeBtn.addEventListener("click", () => runAnalysis().catch(showGenericError));
+elements.uploadMaterialBtn.addEventListener("click", () => uploadMaterial().catch(showGenericError));
 elements.saveInfoBtn.addEventListener("click", () => saveImportedInfo().catch(showGenericError));
 elements.captureSnapshotBtn.addEventListener("click", () => captureSnapshot().catch(showGenericError));
-elements.analyzeBtn.addEventListener("click", () => runAnalysis().catch(showGenericError));
 elements.saveAnalysisSummaryBtn.addEventListener("click", () => saveAnalysisSummary().catch(showGenericError));
 elements.compareSelectedBtn.addEventListener("click", compareSelectedAnalyses);
+elements.searchKnowledgeBtn.addEventListener("click", () => loadKnowledge(elements.knowledgeSearch.value.trim()).catch(showGenericError));
+elements.createKnowledgeBtn.addEventListener("click", () => createKnowledgeFromCurrentSession().catch(showGenericError));
 elements.workflowStage.addEventListener("change", () => {
-  renderStageGuidance(elements.workflowStage.value);
-  const stageMeta = (state.activeSessionDetail?.workflowStages || state.overview?.workflowStages || []).find(
-    (item) => item.key === elements.workflowStage.value,
-  );
-  elements.activeStageLabel.textContent = stageMeta?.label || "现象";
+  state.currentStepKey = elements.workflowStage.value;
+  renderStepForm();
 });
 
 resetWorkflow();
 elements.testCaseSteps.value = defaultTestStepsJson();
-Promise.all([loadConfig(), loadOverview(), loadSessions(), loadTestCases(), loadTestRuns(), loadSerialPorts(), pollSerialStatus()]).catch(showGenericError);
+Promise.all([loadConfig(), loadOverview(), loadSessions(), loadTestCases(), loadTestRuns(), loadSerialPorts(), loadKnowledge(), pollSerialStatus()]).catch(showGenericError);
 startSerialPolling();

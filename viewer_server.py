@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.11.0"
+APP_VERSION = "v0.12.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -117,6 +117,30 @@ def init_storage() -> None:
                 raw_text TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES sessions(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS session_steps (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                step_key TEXT NOT NULL,
+                data_json TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES sessions(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL,
+                root_cause TEXT NOT NULL DEFAULT '',
+                solution TEXT NOT NULL DEFAULT '',
+                validation TEXT NOT NULL DEFAULT '',
+                related_cases_json TEXT NOT NULL DEFAULT '[]',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS test_cases (
@@ -474,6 +498,33 @@ def analysis_to_dict(row: sqlite3.Row) -> dict:
     }
 
 
+def session_step_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "sessionId": row["session_id"],
+        "step": row["step_key"],
+        "data": json.loads(row["data_json"] or "{}"),
+        "status": row["status"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def knowledge_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "sessionId": row["session_id"],
+        "title": row["title"],
+        "rootCause": row["root_cause"],
+        "solution": row["solution"],
+        "validation": row["validation"],
+        "relatedCases": json.loads(row["related_cases_json"] or "[]"),
+        "tags": json.loads(row["tags_json"] or "[]"),
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
 def test_case_to_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
@@ -546,7 +597,24 @@ def create_session(
         )
         conn.commit()
         row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        for step in default_session_steps():
+            conn.execute(
+                """
+                INSERT INTO session_steps (id, session_id, step_key, data_json, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    uuid4().hex,
+                    session_id,
+                    step["step"],
+                    json.dumps(step["data"], ensure_ascii=False),
+                    step["status"],
+                    now,
+                    now,
+                ),
+            )
         result = session_to_dict(row)
+        conn.commit()
     finally:
         conn.close()
     write_session_markdown(session_id)
@@ -726,6 +794,157 @@ def list_test_runs(limit: int = 30) -> list[dict]:
         conn.close()
 
 
+def list_knowledge(search_text: str = "") -> list[dict]:
+    conn = get_conn()
+    try:
+        if search_text.strip():
+            like = f"%{search_text.strip()}%"
+            rows = conn.execute(
+                """
+                SELECT * FROM knowledge
+                WHERE title LIKE ? OR root_cause LIKE ? OR solution LIKE ? OR validation LIKE ?
+                ORDER BY updated_at DESC, created_at DESC
+                """,
+                (like, like, like, like),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM knowledge ORDER BY updated_at DESC, created_at DESC").fetchall()
+        return [knowledge_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_session_steps(conn: sqlite3.Connection, session_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT * FROM session_steps WHERE session_id = ? ORDER BY created_at ASC",
+        (session_id,),
+    ).fetchall()
+    if rows:
+        return [session_step_to_dict(row) for row in rows]
+    now = now_ts()
+    for step in default_session_steps():
+        conn.execute(
+            """
+            INSERT INTO session_steps (id, session_id, step_key, data_json, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                uuid4().hex,
+                session_id,
+                step["step"],
+                json.dumps(step["data"], ensure_ascii=False),
+                step["status"],
+                now,
+                now,
+            ),
+        )
+    conn.commit()
+    rows = conn.execute(
+        "SELECT * FROM session_steps WHERE session_id = ? ORDER BY created_at ASC",
+        (session_id,),
+    ).fetchall()
+    return [session_step_to_dict(row) for row in rows]
+
+
+def upsert_session_step(session_id: str, step_key: str, data: dict, status: str) -> dict:
+    now = now_ts()
+    conn = get_conn()
+    try:
+        exists = conn.execute(
+            "SELECT id FROM session_steps WHERE session_id = ? AND step_key = ?",
+            (session_id, step_key),
+        ).fetchone()
+        if exists:
+            conn.execute(
+                """
+                UPDATE session_steps
+                SET data_json = ?, status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (json.dumps(data, ensure_ascii=False), status, now, exists["id"]),
+            )
+            row_id = exists["id"]
+        else:
+            row_id = uuid4().hex
+            conn.execute(
+                """
+                INSERT INTO session_steps (id, session_id, step_key, data_json, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (row_id, session_id, step_key, json.dumps(data, ensure_ascii=False), status, now, now),
+            )
+        touch_session(conn, session_id)
+        conn.commit()
+        row = conn.execute("SELECT * FROM session_steps WHERE id = ?", (row_id,)).fetchone()
+        return session_step_to_dict(row)
+    finally:
+        conn.close()
+
+
+def create_knowledge_from_payload(
+    session_id: str,
+    title: str,
+    root_cause: str,
+    solution: str,
+    validation: str,
+    related_cases: list,
+    tags: list,
+) -> dict:
+    now = now_ts()
+    knowledge_id = uuid4().hex
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO knowledge (id, session_id, title, root_cause, solution, validation, related_cases_json, tags_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                knowledge_id,
+                session_id,
+                title.strip() or "未命名知识条目",
+                root_cause.strip(),
+                solution.strip(),
+                validation.strip(),
+                json.dumps(related_cases or [], ensure_ascii=False),
+                json.dumps(tags or [], ensure_ascii=False),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM knowledge WHERE id = ?", (knowledge_id,)).fetchone()
+        return knowledge_to_dict(row)
+    finally:
+        conn.close()
+
+
+def create_knowledge_from_session(session_id: str, payload: dict | None = None) -> dict:
+    session_data = get_session(session_id)
+    latest_analysis = (session_data.get("analyses") or [None])[0] or {}
+    analysis_result = latest_analysis.get("result") or {}
+    request_title = (payload or {}).get("title") if payload else ""
+    title = str(request_title or session_data.get("title") or "未命名知识条目").strip()
+    root_cause = str((payload or {}).get("rootCause") or analysis_result.get("phenomenon_summary") or "").strip()
+    solution = str((payload or {}).get("solution") or "\n".join(
+        [item.get("instructions", "") for item in analysis_result.get("validation_steps", [])[:3] if isinstance(item, dict)]
+    )).strip()
+    validation = str((payload or {}).get("validation") or "\n".join(
+        [item.get("guidance", "") for item in analysis_result.get("workflow_guidance", [])[:3] if isinstance(item, dict)]
+    )).strip()
+    related_cases = (payload or {}).get("relatedCases") or (analysis_result.get("related_assets") or {}).get("recommended_test_cases") or []
+    tags = (payload or {}).get("tags") or (analysis_result.get("case_update_hint") or {}).get("candidate_root_cause_tags") or []
+    return create_knowledge_from_payload(
+        session_id=session_id,
+        title=title,
+        root_cause=root_cause,
+        solution=solution,
+        validation=validation,
+        related_cases=related_cases if isinstance(related_cases, list) else [str(related_cases)],
+        tags=tags if isinstance(tags, list) else [str(tags)],
+    )
+
+
 WORKFLOW_STAGES = [
     {"key": "phenomenon", "label": "现象", "goal": "明确问题表现、影响范围和触发条件"},
     {"key": "layered_analysis", "label": "分层分析", "goal": "判断问题更像硬件、接口、驱动还是系统层"},
@@ -734,6 +953,19 @@ WORKFLOW_STAGES = [
     {"key": "solution", "label": "解决方案", "goal": "记录 workaround、修复动作和回归建议"},
     {"key": "lessons", "label": "经验总结", "goal": "沉淀 Case、标签和可复用规则"},
 ]
+
+
+def default_session_steps() -> list[dict]:
+    defaults = []
+    for stage in WORKFLOW_STAGES:
+        defaults.append(
+            {
+                "step": stage["key"],
+                "data": {},
+                "status": "pending",
+            }
+        )
+    return defaults
 
 
 def build_workbench_overview() -> dict:
@@ -746,6 +978,7 @@ def build_workbench_overview() -> dict:
             "testCases": conn.execute("SELECT COUNT(1) FROM test_cases").fetchone()[0],
             "testRuns": conn.execute("SELECT COUNT(1) FROM test_runs").fetchone()[0],
             "evidence": conn.execute("SELECT COUNT(1) FROM evidence").fetchone()[0],
+            "knowledge": conn.execute("SELECT COUNT(1) FROM knowledge").fetchone()[0],
         }
         issue_type_rows = conn.execute(
             """
@@ -767,12 +1000,14 @@ def build_workbench_overview() -> dict:
         ).fetchall()
         recent_sessions = conn.execute("SELECT * FROM sessions ORDER BY updated_at DESC LIMIT 5").fetchall()
         recent_runs = conn.execute("SELECT * FROM test_runs ORDER BY created_at DESC LIMIT 5").fetchall()
+        recent_knowledge = conn.execute("SELECT * FROM knowledge ORDER BY updated_at DESC LIMIT 5").fetchall()
         return {
             "counts": counts,
             "issueTypes": [{"label": row["issue_type"], "count": row["count"]} for row in issue_type_rows],
             "severities": [{"label": row["severity"], "count": row["count"]} for row in severity_rows],
             "recentSessions": [session_to_dict(row) for row in recent_sessions],
             "recentTestRuns": [test_run_to_dict(row) for row in recent_runs],
+            "recentKnowledge": [knowledge_to_dict(row) for row in recent_knowledge],
             "workflowStages": WORKFLOW_STAGES,
         }
     finally:
@@ -790,6 +1025,7 @@ def get_session(session_id: str) -> dict:
         payload = session_to_dict(row)
         payload["evidence"] = [evidence_to_dict(item) for item in evidence_rows]
         payload["analyses"] = [analysis_to_dict(item) for item in analysis_rows]
+        payload["steps"] = get_session_steps(conn, session_id)
         payload["workflowStages"] = WORKFLOW_STAGES
         payload["libraryContext"] = build_library_context(conn, session_id)
         return payload
@@ -819,6 +1055,7 @@ def build_library_context(conn: sqlite3.Connection, session_id: str) -> dict:
         (session_id,),
     ).fetchall()
     test_case_rows = conn.execute("SELECT * FROM test_cases ORDER BY updated_at DESC LIMIT 8").fetchall()
+    knowledge_rows = conn.execute("SELECT * FROM knowledge ORDER BY updated_at DESC LIMIT 8").fetchall()
     return {
         "recentSessions": [
             {
@@ -838,7 +1075,49 @@ def build_library_context(conn: sqlite3.Connection, session_id: str) -> dict:
             for row in recent_analysis_rows
         ],
         "testCases": [test_case_to_dict(row) for row in test_case_rows],
+        "knowledge": [knowledge_to_dict(row) for row in knowledge_rows],
     }
+
+
+def suggest_test_cases_for_session(session_payload: dict) -> list[dict]:
+    issue_type = (session_payload.get("issueType") or "").strip().lower()
+    device_model = (session_payload.get("deviceModel") or "").strip().lower()
+    recommendations = []
+    for test_case in session_payload.get("libraryContext", {}).get("testCases", []):
+        score = 0
+        category = (test_case.get("category") or "").strip().lower()
+        target = (test_case.get("target") or "").strip().lower()
+        if issue_type and issue_type in category:
+            score += 2
+        if device_model and device_model in target:
+            score += 1
+        if score or not recommendations:
+            recommendations.append(
+                {
+                    "id": test_case.get("id"),
+                    "caseCode": test_case.get("caseCode"),
+                    "name": test_case.get("name"),
+                    "category": test_case.get("category"),
+                    "target": test_case.get("target"),
+                    "score": score,
+                }
+            )
+    recommendations.sort(key=lambda item: (-item["score"], item["caseCode"] or ""))
+    return recommendations[:5]
+
+
+def detect_missing_info_for_session(session_payload: dict) -> list[str]:
+    missing = []
+    if not (session_payload.get("issueType") or "").strip():
+        missing.append("缺少问题类型，请先归类为 UART / I2C / WIFI / POWER 等。")
+    if not (session_payload.get("symptom") or "").strip():
+        missing.append("缺少问题现象描述，请补充预期、实际和触发条件。")
+    evidence = session_payload.get("evidence", [])
+    if not any(item.get("kind") == "serial_log" for item in evidence):
+        missing.append("当前没有串口日志，建议先抓一段完整 log。")
+    if not any(item.get("kind") in {"material", "imported_info"} for item in evidence):
+        missing.append("当前没有客户资料或导入信息，建议至少补一份问题说明。")
+    return missing
 
 
 def create_fail_session_from_test_run(base_session: dict, test_case: dict, report: dict) -> dict:
@@ -1663,8 +1942,48 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(200, {"testRuns": list_test_runs()})
             return
 
+        if path == "/api/knowledge":
+            query = urllib.parse.parse_qs(parsed.query)
+            keyword = str(query.get("q", [""])[0]).strip()
+            self.send_json(200, {"knowledge": list_knowledge(keyword)})
+            return
+
+        if path == "/testcase/list":
+            self.send_json(200, {"testcases": list_test_cases()})
+            return
+
+        if path == "/knowledge/search":
+            query = urllib.parse.parse_qs(parsed.query)
+            keyword = str(query.get("q", [""])[0]).strip()
+            self.send_json(200, {"knowledge": list_knowledge(keyword)})
+            return
+
+        if path == "/evidence/by-session":
+            query = urllib.parse.parse_qs(parsed.query)
+            session_id = str(query.get("sessionId", [""])[0]).strip()
+            if not session_id:
+                self.send_json(400, {"error": "sessionId is required"})
+                return
+            try:
+                payload = get_session(session_id)
+                self.send_json(200, {"evidence": payload.get("evidence", [])})
+            except KeyError:
+                self.send_json(404, {"error": "session not found"})
+            return
+
         if path.startswith("/api/sessions/"):
             session_id = path.split("/")[3] if len(path.split("/")) > 3 else ""
+            if not session_id:
+                self.send_json(400, {"error": "session id is required"})
+                return
+            try:
+                self.send_json(200, get_session(session_id))
+            except KeyError:
+                self.send_json(404, {"error": "session not found"})
+            return
+
+        if path.startswith("/session/"):
+            session_id = path.split("/")[2] if len(path.split("/")) > 2 else ""
             if not session_id:
                 self.send_json(400, {"error": "session id is required"})
                 return
@@ -1716,6 +2035,26 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             )
             return
 
+        if path == "/session/create":
+            try:
+                payload = self.parse_json_body()
+                session = create_session(
+                    str(payload.get("title", "")).strip() or "客户调试会话",
+                    str(payload.get("customerName", "")).strip(),
+                    str(payload.get("deviceModel", "")).strip(),
+                    str(payload.get("serialNumber", "")).strip(),
+                    str(payload.get("deviceIp", "")).strip(),
+                    str(payload.get("issueType", "")).strip(),
+                    str(payload.get("severity", "")).strip() or "P1",
+                    str(payload.get("workflowStage", "")).strip() or "phenomenon",
+                    str(payload.get("symptom", "")).strip(),
+                    str(payload.get("owner", "")).strip(),
+                )
+                self.send_json(200, {"session": session})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
         if path == "/api/sessions":
             try:
                 payload = self.parse_json_body()
@@ -1732,6 +2071,27 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     str(payload.get("owner", "")).strip(),
                 )
                 self.send_json(200, {"session": session})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/testcase":
+            try:
+                payload = self.parse_json_body()
+                steps = payload.get("steps", [])
+                if not isinstance(steps, list):
+                    self.send_json(400, {"error": "steps must be a list"})
+                    return
+                test_case = upsert_test_case(
+                    str(payload.get("caseCode", payload.get("id", ""))).strip(),
+                    str(payload.get("name", "")).strip(),
+                    str(payload.get("category", "")).strip(),
+                    str(payload.get("target", "")).strip(),
+                    steps,
+                    str(payload.get("passRule", "all_steps_pass")).strip() or "all_steps_pass",
+                    bool(payload.get("enabled", True)),
+                )
+                self.send_json(200, {"testcase": test_case})
             except Exception as exc:
                 self.send_json(500, {"error": str(exc)})
             return
@@ -1753,6 +2113,22 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     bool(payload.get("enabled", True)),
                 )
                 self.send_json(200, {"ok": True, "testCase": test_case})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/testrun/execute":
+            try:
+                payload = self.parse_json_body()
+                test_case_id = str(payload.get("testcaseId", payload.get("testCaseId", ""))).strip()
+                session_id = str(payload.get("sessionId", "")).strip()
+                if not test_case_id or not session_id:
+                    self.send_json(400, {"error": "testcaseId and sessionId are required"})
+                    return
+                result = execute_test_case(test_case_id, session_id)
+                self.send_json(200, {"testrun": result["run"], "generatedSessionId": result["generatedSessionId"]})
+            except KeyError as exc:
+                self.send_json(404, {"error": str(exc)})
             except Exception as exc:
                 self.send_json(500, {"error": str(exc)})
             return
@@ -1787,6 +2163,94 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json(200, {"ok": True, "evidence": evidence})
             except KeyError:
                 self.send_json(404, {"error": "session not found"})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/evidence/upload":
+            try:
+                form = self.parse_multipart()
+                session_id = str(form.getfirst("sessionId", "")).strip()
+                if not session_id:
+                    self.send_json(400, {"error": "sessionId is required"})
+                    return
+                title = str(form.getfirst("title", "")).strip() or "上传证据"
+                if "file" not in form:
+                    self.send_json(400, {"error": "file is required"})
+                    return
+                file_item = form["file"]
+                file_name = file_item.filename or "evidence.bin"
+                content = file_item.file.read()
+                saved_name, saved_path = save_uploaded_file(session_id, file_name, content)
+                extracted_text, note = extract_text_from_file(file_name, content)
+                suffix = Path(file_name).suffix.lower()
+                evidence_type = "image" if suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"} else "log"
+                evidence = add_evidence(
+                    session_id,
+                    evidence_type,
+                    title,
+                    content_text=extracted_text or note,
+                    file_name=saved_name,
+                    file_path=saved_path,
+                    meta={"bytes": len(content), "extractNote": note, "source": "upload"},
+                )
+                self.send_json(200, {"evidence": evidence})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/knowledge/create":
+            try:
+                payload = self.parse_json_body()
+                session_id = str(payload.get("sessionId", "")).strip()
+                if not session_id:
+                    self.send_json(400, {"error": "sessionId is required"})
+                    return
+                knowledge = create_knowledge_from_session(session_id, payload)
+                self.send_json(200, {"knowledge": knowledge})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/ai/suggest-testcase":
+            try:
+                payload = self.parse_json_body()
+                session_id = str(payload.get("sessionId", "")).strip()
+                if not session_id:
+                    self.send_json(400, {"error": "sessionId is required"})
+                    return
+                session_payload = get_session(session_id)
+                self.send_json(200, {"recommendations": suggest_test_cases_for_session(session_payload)})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/ai/missing-info":
+            try:
+                payload = self.parse_json_body()
+                session_id = str(payload.get("sessionId", "")).strip()
+                if not session_id:
+                    self.send_json(400, {"error": "sessionId is required"})
+                    return
+                session_payload = get_session(session_id)
+                self.send_json(200, {"missingInformation": detect_missing_info_for_session(session_payload)})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/ai/analyze":
+            try:
+                payload = self.parse_json_body()
+                session_id = str(payload.get("sessionId", "")).strip()
+                if not session_id:
+                    self.send_json(400, {"error": "sessionId is required"})
+                    return
+                request_text = str(payload.get("requestText", "")).strip() or "请根据当前会话自动分析。"
+                device_ip = str(payload.get("deviceIp", "")).strip()
+                capture_snapshot = bool(payload.get("captureSnapshot", False))
+                request_id = str(int(time.time() * 1000))
+                analysis = run_session_analysis(session_id, request_text, device_ip, capture_snapshot, request_id)
+                self.send_json(200, {"analysis": analysis, "requestId": request_id})
             except Exception as exc:
                 self.send_json(500, {"error": str(exc)})
             return
@@ -1934,6 +2398,20 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     self.send_json(200, {"ok": True, "session": session})
                     return
 
+                if action == "step":
+                    step_key = str(payload.get("step", "")).strip()
+                    data = payload.get("data", {})
+                    status = str(payload.get("status", "done")).strip() or "done"
+                    if not step_key:
+                        self.send_json(400, {"error": "step is required"})
+                        return
+                    if not isinstance(data, dict):
+                        self.send_json(400, {"error": "data must be an object"})
+                        return
+                    step = upsert_session_step(session_id, step_key, data, status)
+                    self.send_json(200, {"ok": True, "step": step})
+                    return
+
                 if action == "logs":
                     evidence = add_evidence(
                         session_id,
@@ -1988,6 +2466,27 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 request_id = str(int(time.time() * 1000))
                 add_log("error", "request", "Session request failed", {"sessionId": session_id, "action": action, "error": str(exc)}, request_id)
                 self.send_json(500, {"error": str(exc), "requestId": request_id})
+                return
+
+        if path.startswith("/session/") and path.endswith("/step"):
+            parts = path.split("/")
+            if len(parts) >= 4:
+                session_id = parts[2]
+                try:
+                    payload = self.parse_json_body()
+                    step_key = str(payload.get("step", "")).strip()
+                    data = payload.get("data", {})
+                    status = str(payload.get("status", "done")).strip() or "done"
+                    if not step_key:
+                        self.send_json(400, {"error": "step is required"})
+                        return
+                    if not isinstance(data, dict):
+                        self.send_json(400, {"error": "data must be an object"})
+                        return
+                    step = upsert_session_step(session_id, step_key, data, status)
+                    self.send_json(200, {"step": step})
+                except Exception as exc:
+                    self.send_json(500, {"error": str(exc)})
                 return
 
         if path.startswith("/api/test-cases/"):

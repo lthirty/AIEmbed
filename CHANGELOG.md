@@ -2,6 +2,17 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.12.0 - 2026-05-04
+
+- Rebuilt the local web app into the four-page structure defined by `Embedded Evidence Workbench Web Spec v1.0`: `Overview / Test Center / Analysis Center / Library`.
+- Replaced the old long single-page workflow with a sidebar-driven application shell and dedicated center pages for overview, test execution, analysis workflow, and knowledge reuse.
+- Added `session_steps` storage so the Analysis Center now has a real step model instead of UI-only workflow labels.
+- Added `knowledge` storage so completed sessions can now be promoted into reusable knowledge entries inside the Library page.
+- Added normalized routes aligned with the spec, including `/session/create`, `/session/{id}/step`, `/testcase`, `/testcase/list`, `/testrun/execute`, `/knowledge/create`, `/knowledge/search`, `/ai/analyze`, `/ai/suggest-testcase`, `/ai/missing-info`, and `/evidence/by-session`.
+- Added Analysis Center helpers for missing-info detection, testcase recommendation, step data saving, and knowledge generation from the current session.
+- Kept `AI 设置` and `log 收集` intact, but moved them into the new four-center information architecture.
+- Bumped the local workbench version to `v0.12.0`.
+
 ## v0.11.0 - 2026-05-04
 
 - Refactored the local web UI from a feature pile into a `Session 流程工作台`, keeping `AI 设置` and `log 收集` while reorganizing the page around guided issue analysis.

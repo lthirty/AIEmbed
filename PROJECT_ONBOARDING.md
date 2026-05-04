@@ -472,6 +472,66 @@ http://127.0.0.1:8000/
 
 这样用户不是直接“问 AI”，而是跟着页面流程推进问题定位，AI 在已有积累基础上给出摘要、引导和复用建议。
 
+### 11.2.3 四页面结构（v0.12.0 起）
+
+当前本地 Web 已进一步对齐 `Embedded Evidence Workbench Web Spec v1.0`，左侧固定导航变成 4 个页面：
+
+1. `Overview`
+   - 系统入口
+   - 概览卡片
+   - Quick Actions
+   - 当前 Session 编辑
+   - 最近 Session / Test / Knowledge
+2. `Test Center`
+   - 左侧 `TestCase List`
+   - 中间 `TestCase Editor`
+   - 右侧 `Execution Panel`
+   - 底部 `Test Results Table`
+   - 保留自动串口抓取、手工粘贴日志和导入串口文件
+3. `Analysis Center`
+   - 左侧 `Workflow Navigation`
+   - 中间 `Step Content`
+   - 右侧 `AI Assistant`
+   - 下方 `Evidence Panel`
+   - 再下方 `分析结果 / 历史分析`
+4. `Library`
+   - 搜索知识条目
+   - 从当前 Session 生成 Knowledge
+   - 查看根因、解决方案、验证方法和关联 TestCase
+
+这次不是简单改布局，而是把页面主结构正式收敛到：
+
+- `TestCase`
+- `TestRun`
+- `Session`
+- `SessionStep`
+- `Knowledge`
+- `Evidence`
+
+其中：
+
+- `SessionStep` 用来驱动 `phenomenon → layered_analysis → validation → root_cause → solution → lessons`
+- `Knowledge` 用来承接已经完成的问题闭环，进入可复用知识库
+
+### 11.2.4 规范化 API
+
+为对齐新的 Web Spec，当前服务除了原有 `/api/...` 路由，还新增了一组更规范的别名路由：
+
+- `POST /session/create`
+- `GET /session/{id}`
+- `POST /session/{id}/step`
+- `POST /testcase`
+- `GET /testcase/list`
+- `POST /testrun/execute`
+- `POST /knowledge/create`
+- `GET /knowledge/search`
+- `POST /ai/analyze`
+- `POST /ai/suggest-testcase`
+- `POST /ai/missing-info`
+- `GET /evidence/by-session`
+
+这样后续如果要把前端切到 `React + Next.js + Zustand`，路由语义已经更接近正式平台。
+
 ### 11.3 设计限制
 
 - 当前主分析链路以文本资料、日志、导入信息和附件说明为主，抓拍图片只是辅助证据
@@ -498,6 +558,8 @@ http://127.0.0.1:8000/
 - 工作流日志会区分会话读取、抓拍补证、AI 请求和 JSON 解析几个阶段
 - 当前结构化分析已经实测可基于资料、串口日志和导入信息输出 `phenomenon_summary / possible_causes / validation_steps / missing_information`
 - 当前结构化分析还会基于开放资产库输出 `layered_analysis / workflow_guidance / related_assets`
+- 当前 Analysis Center 已支持把步骤数据保存到 `SessionStep`
+- 当前 Library 已支持从当前 Session 自动生成 Knowledge 条目
 
 ## 12. 本次实际调试记录
 
