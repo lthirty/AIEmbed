@@ -2,6 +2,12 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.13.1 - 2026-05-04
+
+- Adjusted the `Overview` page back to a dashboard-style mixed layout instead of strict single-column stacking.
+- Kept `Test Center / Analysis Center / Library` in top-to-bottom logic order, while giving `Overview` a more suitable summary layout with horizontal plus vertical combinations.
+- Bumped the local workbench version to `v0.13.1`.
+
 ## v0.13.0 - 2026-05-04
 
 - Reordered the Analysis Center into strict top-to-bottom logic: `Evidence Panel -> Workflow Navigation -> Step Content -> AI Assistant -> 分析结果 -> 历史分析`.

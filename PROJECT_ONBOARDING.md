@@ -472,7 +472,7 @@ http://127.0.0.1:8000/
 
 这样用户不是直接“问 AI”，而是跟着页面流程推进问题定位，AI 在已有积累基础上给出摘要、引导和复用建议。
 
-### 11.2.3 四页面结构（v0.13.0 起）
+### 11.2.3 四页面结构（v0.13.1 起）
 
 当前本地 Web 已进一步对齐 `Embedded Evidence Workbench Web Spec v1.0`，左侧固定导航变成 4 个页面：
 
@@ -482,6 +482,7 @@ http://127.0.0.1:8000/
    - Quick Actions
    - 当前 Session 编辑
    - 最近 Session / Test / Knowledge
+   - 使用总览式横竖结合布局，不强制单列
 2. `Test Center`
    - `TestCase List`
    - `TestCase Editor`
@@ -516,7 +517,8 @@ http://127.0.0.1:8000/
 
 - `SessionStep` 用来驱动 `phenomenon → layered_analysis → validation → root_cause → solution → lessons`
 - `Knowledge` 用来承接已经完成的问题闭环，进入可复用知识库
-- 所有中心页都优先采用从上到下的单列信息流，降低横向跳读成本
+- `Overview` 保持 dashboard 风格的横竖结合总览布局
+- `Test Center / Analysis Center / Library` 继续采用从上到下的单列信息流，降低横向跳读成本
 
 ### 11.2.4 规范化 API
 
