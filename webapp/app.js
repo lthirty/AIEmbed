@@ -599,26 +599,29 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
       renderReadableAnalysis(state.latestAnalysis);
     },
   }));
-  const list = document.createElement("div");
-  list.className = "simple-analysis-table";
-  [
-    ["index", "序号"],
-    ["content", "内容"],
-    ["actions", "操作"],
-  ].forEach(([, label]) => {
-    const head = document.createElement("div");
-    head.className = "simple-analysis-head";
-    head.textContent = label;
-    list.appendChild(head);
-  });
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "simple-analysis-table-wrap";
+  const table = document.createElement("table");
+  table.className = "simple-analysis-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>序号</th>
+        <th>内容</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement("tbody");
   const values = [...items];
   while (values.length < minRows) values.push("");
   values.forEach((value, index) => {
-    const indexCell = document.createElement("div");
+    const tr = document.createElement("tr");
+    const indexCell = document.createElement("td");
     indexCell.className = "simple-analysis-index";
     indexCell.textContent = String(index + 1);
-    list.appendChild(indexCell);
-
+    tr.appendChild(indexCell);
+    const contentCell = document.createElement("td");
     const textarea = document.createElement("textarea");
     textarea.rows = 3;
     textarea.value = value || "";
@@ -626,8 +629,9 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
     textarea.dataset.listIndex = String(index);
     textarea.readOnly = !isRowEditing(key, index);
     textarea.className = "simple-analysis-textarea";
-    list.appendChild(textarea);
-
+    contentCell.appendChild(textarea);
+    tr.appendChild(contentCell);
+    const actionCell = document.createElement("td");
     const actions = document.createElement("div");
     actions.className = "inline-actions mini-actions row-actions";
     const editBtn = document.createElement("button");
@@ -658,9 +662,13 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
     });
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
-    list.appendChild(actions);
+    actionCell.appendChild(actions);
+    tr.appendChild(actionCell);
+    body.appendChild(tr);
   });
-  section.appendChild(list);
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  section.appendChild(tableWrap);
   return section;
 }
 
@@ -707,7 +715,7 @@ function createMergedSection(rows) {
   const tableWrap = document.createElement("div");
   tableWrap.className = "merged-analysis-table-wrap";
   applyMergedColumnWidths(tableWrap);
-  const table = document.createElement("div");
+  const table = document.createElement("table");
   table.className = "merged-analysis-table";
   const headers = [
     ["category", "分类"],
@@ -717,19 +725,32 @@ function createMergedSection(rows) {
     ["result", "验证结果"],
     ["actions", "操作"],
   ];
-  headers.forEach(([key, label]) => {
-    const head = document.createElement("div");
-    head.className = "merged-analysis-head";
-    head.textContent = label;
-    if (key !== "actions") head.appendChild(createResizeHandle(key, tableWrap));
-    table.appendChild(head);
+  const colgroup = document.createElement("colgroup");
+  headers.forEach(([key]) => {
+    const col = document.createElement("col");
+    col.dataset.colKey = key;
+    colgroup.appendChild(col);
   });
+  table.appendChild(colgroup);
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headers.forEach(([key, label]) => {
+    const th = document.createElement("th");
+    th.className = "merged-analysis-head";
+    th.textContent = label;
+    if (key !== "actions") th.appendChild(createResizeHandle(key, tableWrap));
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
   const values = [...rows];
   while (values.length < 2) values.push({ category: "", owner: "", reason: "", method: "", result: "" });
   const builtinCategories = ["", "硬件", "软件", "固件", "OS", "__custom__"];
   values.forEach((row, index) => {
     const editable = isRowEditing("layeredValidation", index);
-    const categoryCell = document.createElement("div");
+    const tr = document.createElement("tr");
+    const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
     const categorySelect = document.createElement("select");
     const customCategory = row.category && !["硬件", "软件", "固件", "OS"].includes(row.category) ? row.category : "";
@@ -757,9 +778,10 @@ function createMergedSection(rows) {
       customInput.classList.toggle("hidden", categorySelect.value !== "__custom__");
     });
     categoryCell.appendChild(customInput);
-    table.appendChild(categoryCell);
+    tr.appendChild(categoryCell);
 
     ["owner", "reason", "method", "result"].forEach((field) => {
+      const td = document.createElement("td");
       const textarea = document.createElement("textarea");
       textarea.rows = 3;
       textarea.value = row[field] || "";
@@ -767,9 +789,11 @@ function createMergedSection(rows) {
       textarea.dataset.layeredField = field;
       textarea.readOnly = !editable;
       textarea.className = "merged-analysis-textarea";
-      table.appendChild(textarea);
+      td.appendChild(textarea);
+      tr.appendChild(td);
     });
 
+    const actionCell = document.createElement("td");
     const actions = document.createElement("div");
     actions.className = "inline-actions mini-actions row-actions";
     const editBtn = document.createElement("button");
@@ -792,8 +816,11 @@ function createMergedSection(rows) {
     });
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
-    table.appendChild(actions);
+    actionCell.appendChild(actions);
+    tr.appendChild(actionCell);
+    tbody.appendChild(tr);
   });
+  table.appendChild(tbody);
   tableWrap.appendChild(table);
   section.appendChild(tableWrap);
   return section;
