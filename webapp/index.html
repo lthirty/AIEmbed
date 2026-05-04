@@ -249,59 +249,10 @@
         </section>
 
         <section id="view-analysis" class="view-page">
-          <div class="analysis-layout">
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Workflow Navigation</h3>
-                <span class="helper">Step N 未完成前，禁止进入 N+1</span>
-              </div>
-              <div id="session-stage-nav" class="stage-nav"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Step Content</h3>
-                <span id="step-form-title" class="helper">当前步骤数据</span>
-              </div>
-              <div id="stage-guidance" class="guidance-card"></div>
-              <div id="step-form-fields" class="step-form"></div>
-              <div class="inline-actions">
-                <button id="save-step-btn" type="button">保存当前步骤</button>
-                <button id="mark-step-done-btn" type="button">标记本步骤完成</button>
-              </div>
-              <p id="step-save-result" class="helper">当前步骤的数据会写入 SessionStep。</p>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <h3>AI Assistant</h3>
-                <span class="helper">自动检测缺失信息、推荐测试用例、给出下一步建议</span>
-              </div>
-              <label>本轮分析目标<textarea id="analysis-request" rows="5" placeholder="例如：根据当前现象、日志和资料，分析最可能原因并给出下一步验证顺序。"></textarea></label>
-              <label class="checkbox-row"><input id="capture-before-analyze" type="checkbox"><span>分析前自动抓拍一张证据图</span></label>
-              <div class="inline-actions">
-                <button id="suggest-missing-btn" type="button">检测缺失信息</button>
-                <button id="suggest-tests-btn" type="button">推荐测试用例</button>
-                <button id="analyze-btn" type="button">开始分析</button>
-              </div>
-              <section class="steps-box">
-                <span class="role">ANALYSIS WORKFLOW</span>
-                <div id="workflow-steps" class="workflow-steps workflow-inline"></div>
-              </section>
-              <section class="analysis-result-box">
-                <div class="panel-head">
-                  <span class="role">AI Guidance</span>
-                  <span class="helper">缺失信息 / 测试推荐 / 下一步动作</span>
-                </div>
-                <div id="analysis-guidance" class="analysis-readable"></div>
-              </section>
-            </section>
-          </div>
-
           <section class="panel">
             <div class="panel-head">
               <h3>Evidence Panel</h3>
-              <span class="helper">资料、导入信息、抓拍和最近证据</span>
+              <span class="helper">先完成资料、日志、导入信息和抓拍，再进入 AI 分析</span>
             </div>
             <div class="grid-three">
               <article class="stack-card">
@@ -332,6 +283,53 @@
                 </div>
               </article>
             </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Workflow Navigation</h3>
+              <span class="helper">Step N 未完成前，禁止进入 N+1</span>
+            </div>
+            <div id="session-stage-nav" class="stage-nav"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Step Content</h3>
+              <span id="step-form-title" class="helper">当前步骤数据</span>
+            </div>
+            <div id="stage-guidance" class="guidance-card"></div>
+            <div id="step-form-fields" class="step-form"></div>
+            <div class="inline-actions">
+              <button id="save-step-btn" type="button">保存当前步骤</button>
+              <button id="mark-step-done-btn" type="button">标记本步骤完成</button>
+            </div>
+            <p id="step-save-result" class="helper">当前步骤的数据会写入 SessionStep。</p>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>AI Assistant</h3>
+              <span class="helper">自动检测缺失信息、推荐测试用例、给出下一步建议</span>
+            </div>
+            <label>本轮分析目标<textarea id="analysis-request" rows="5" placeholder="例如：根据当前现象、日志和资料，分析最可能原因并给出下一步验证顺序。"></textarea></label>
+            <label class="checkbox-row"><input id="capture-before-analyze" type="checkbox"><span>分析前自动抓拍一张证据图</span></label>
+            <div class="inline-actions">
+              <button id="suggest-missing-btn" type="button">检测缺失信息</button>
+              <button id="suggest-tests-btn" type="button">推荐测试用例</button>
+              <button id="analyze-btn" type="button">开始分析</button>
+            </div>
+            <section class="steps-box">
+              <span class="role">ANALYSIS WORKFLOW</span>
+              <div id="workflow-steps" class="workflow-steps workflow-inline"></div>
+            </section>
+            <section class="analysis-result-box">
+              <div class="panel-head">
+                <span class="role">AI Guidance</span>
+                <span class="helper">缺失信息 / 测试推荐 / 下一步动作 / 可视化分析</span>
+              </div>
+              <div id="analysis-guidance" class="analysis-readable"></div>
+            </section>
           </section>
 
           <section class="panel">
@@ -374,28 +372,28 @@
         </section>
 
         <section id="view-library" class="view-page">
-          <div class="grid-two">
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Knowledge Library</h3>
-                <span class="helper">经验沉淀与复用</span>
-              </div>
-              <div class="inline-actions">
-                <input id="knowledge-search" type="text" placeholder="搜索根因、方案或标签">
-                <button id="search-knowledge-btn" type="button">搜索</button>
-                <button id="create-knowledge-btn" type="button">从当前 Session 生成</button>
-              </div>
-              <div id="knowledge-list" class="list-stack"></div>
-            </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Knowledge Library</h3>
+              <span class="helper">经验沉淀、搜索、筛选和复用</span>
+            </div>
+            <div class="inline-actions">
+              <input id="knowledge-search" type="text" placeholder="搜索根因、方案或标签">
+              <button id="search-knowledge-btn" type="button">搜索</button>
+              <button id="create-knowledge-btn" type="button">从当前 Session 生成</button>
+              <button id="apply-knowledge-btn" type="button">应用到当前分析</button>
+            </div>
+            <div id="knowledge-tag-cloud" class="tag-cloud"></div>
+            <div id="knowledge-list" class="list-stack"></div>
+          </section>
 
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Detail Panel</h3>
-                <span class="helper">问题描述、根因、解决方案、验证方法、关联 TestCase</span>
-              </div>
-              <div id="knowledge-detail" class="analysis-readable"></div>
-            </section>
-          </div>
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Detail Panel</h3>
+              <span class="helper">问题描述、根因、解决方案、验证方法、关联 TestCase</span>
+            </div>
+            <div id="knowledge-detail" class="analysis-readable"></div>
+          </section>
         </section>
       </section>
     </section>

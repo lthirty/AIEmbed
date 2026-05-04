@@ -100,6 +100,8 @@ const elements = {
   knowledgeSearch: document.getElementById("knowledge-search"),
   searchKnowledgeBtn: document.getElementById("search-knowledge-btn"),
   createKnowledgeBtn: document.getElementById("create-knowledge-btn"),
+  applyKnowledgeBtn: document.getElementById("apply-knowledge-btn"),
+  knowledgeTagCloud: document.getElementById("knowledge-tag-cloud"),
   knowledgeList: document.getElementById("knowledge-list"),
   knowledgeDetail: document.getElementById("knowledge-detail"),
   navItems: Array.from(document.querySelectorAll(".nav-item")),
@@ -122,6 +124,8 @@ const state = {
   knowledge: [],
   selectedKnowledgeId: "",
   currentStepKey: "phenomenon",
+  lastMissingInfo: [],
+  lastSuggestedTests: [],
 };
 
 const workflowTemplate = [
@@ -362,6 +366,30 @@ function renderSimpleList(target, items, mapper) {
     article.className = "list-item";
     article.innerHTML = `<strong>${mapped.title}</strong><p>${mapped.meta || ""}</p>`;
     target.appendChild(article);
+  }
+}
+
+function hasEvidenceReady() {
+  const evidence = state.activeSessionDetail?.evidence || [];
+  return evidence.length > 0;
+}
+
+function validateAnalysisPrerequisites() {
+  requireSession();
+  const issues = [];
+  if (!hasEvidenceReady()) {
+    issues.push("还没有任何证据，请先完成资料导入、日志收集、导入信息或抓拍。");
+  }
+  const currentStep = getCurrentStepState();
+  const sessionSymptom = (elements.sessionSymptom.value || "").trim();
+  const stepDescription = currentStep?.data?.description || "";
+  if (!sessionSymptom && !stepDescription) {
+    issues.push("还没有清晰的问题现象，请先补充“问题现象”或完成现象步骤。");
+  }
+  if (issues.length) {
+    state.lastMissingInfo = issues;
+    renderAnalysisGuidance(state.latestAnalysis?.result || null);
+    throw new Error(issues.join("\n"));
   }
 }
 
@@ -835,19 +863,119 @@ function createListSection(title, items) {
   return section;
 }
 
+function createOrderedChecklistSection(title, items) {
+  const section = document.createElement("section");
+  section.className = "result-block";
+  section.innerHTML = `<h4>${title}</h4>`;
+  if (!items || !items.length) {
+    section.innerHTML += '<p class="helper">无</p>';
+    return section;
+  }
+  const list = document.createElement("ol");
+  list.className = "checklist-list";
+  items.forEach((item, index) => {
+    const li = document.createElement("li");
+    li.className = "checklist-item";
+    if (typeof item === "string") {
+      li.textContent = item;
+    } else {
+      const order = item.order || index + 1;
+      li.innerHTML = `
+        <strong>${order}. ${item.action || item.goal || item.stage || "待处理动作"}</strong>
+        <p>${item.why || item.guidance || item.instructions || ""}</p>
+        <p class="helper">${item.done_when || item.completion_hint || item.expected_result || ""}</p>
+      `;
+    }
+    list.appendChild(li);
+  });
+  section.appendChild(list);
+  return section;
+}
+
+function createFishboneSection(fishbone) {
+  const section = document.createElement("section");
+  section.className = "result-block";
+  section.innerHTML = "<h4>鱼骨图分析</h4>";
+  if (!fishbone?.problem && !(fishbone?.branches || []).length) {
+    section.innerHTML += '<p class="helper">当前还没有足够信息生成鱼骨图。</p>';
+    return section;
+  }
+  const wrapper = document.createElement("div");
+  wrapper.className = "fishbone-diagram";
+  const problem = document.createElement("div");
+  problem.className = "fishbone-problem";
+  problem.textContent = fishbone.problem || "当前问题";
+  wrapper.appendChild(problem);
+  (fishbone.branches || []).forEach((branch) => {
+    const item = document.createElement("article");
+    item.className = "fishbone-branch";
+    const title = document.createElement("h5");
+    title.textContent = branch.branch || "未命名分支";
+    item.appendChild(title);
+    const list = document.createElement("ul");
+    (branch.causes || []).forEach((cause) => {
+      const li = document.createElement("li");
+      li.textContent = cause;
+      list.appendChild(li);
+    });
+    item.appendChild(list);
+    wrapper.appendChild(item);
+  });
+  section.appendChild(wrapper);
+  return section;
+}
+
+function appendMindmapNode(target, node) {
+  if (!node) return;
+  const li = document.createElement("li");
+  li.className = "mindmap-node";
+  const label = typeof node === "string" ? node : node.title || node.root || "未命名节点";
+  li.innerHTML = `<span>${label}</span>`;
+  const children = typeof node === "string" ? [] : node.children || [];
+  if (children.length) {
+    const list = document.createElement("ul");
+    list.className = "mindmap-children";
+    children.forEach((child) => appendMindmapNode(list, child));
+    li.appendChild(list);
+  }
+  target.appendChild(li);
+}
+
+function createMindmapSection(mindmap) {
+  const section = document.createElement("section");
+  section.className = "result-block";
+  section.innerHTML = "<h4>思维导图</h4>";
+  if (!mindmap?.root) {
+    section.innerHTML += '<p class="helper">当前还没有足够信息生成思维导图。</p>';
+    return section;
+  }
+  const list = document.createElement("ul");
+  list.className = "mindmap-tree";
+  appendMindmapNode(list, mindmap);
+  section.appendChild(list);
+  return section;
+}
+
 function renderAnalysisGuidance(result) {
   elements.analysisGuidance.innerHTML = "";
   const missing = state.lastMissingInfo || [];
   const recommended = state.lastSuggestedTests || [];
-  elements.analysisGuidance.appendChild(createListSection("缺失信息", missing));
-  elements.analysisGuidance.appendChild(createListSection("推荐测试用例", recommended.map((item) => `${item.caseCode} · ${item.name} · score=${item.score}`)));
-  elements.analysisGuidance.appendChild(createListSection("流程化引导", result?.workflow_guidance || []));
+  if (!missing.length && !recommended.length && !result) {
+    elements.analysisGuidance.innerHTML = '<p class="helper">先完成证据输入，再点击“检测缺失信息”或“开始分析”。</p>';
+    return;
+  }
+  elements.analysisGuidance.appendChild(createOrderedChecklistSection("第一步：先补齐缺失输入", missing.map((item, index) => ({ order: index + 1, action: item, why: "这是继续分析前必须补齐的前置条件。", done_when: "已补充到 Session 证据或步骤数据中。" }))));
+  elements.analysisGuidance.appendChild(createOrderedChecklistSection("第二步：证据准备清单", result?.evidence_checklist || []));
+  elements.analysisGuidance.appendChild(createOrderedChecklistSection("第三步：推荐测试用例", recommended.map((item, index) => ({ order: index + 1, action: `${item.caseCode} · ${item.name}`, why: `${item.category || "未分类"} · score=${item.score}`, done_when: item.reason || "执行后补充新证据。" }))));
+  elements.analysisGuidance.appendChild(createOrderedChecklistSection("第四步：流程化引导", result?.guidance_checklist || result?.workflow_guidance || []));
   const relatedAssets = result?.related_assets || {};
-  elements.analysisGuidance.appendChild(createListSection("相关资产", [
+  elements.analysisGuidance.appendChild(createListSection("第五步：可复用资产", [
     ...(relatedAssets.recommended_test_cases || []).map((item) => `TestCase: ${item}`),
     ...(relatedAssets.similar_session_hints || []).map((item) => `Session: ${item}`),
     ...(relatedAssets.reusable_patterns || []).map((item) => `Pattern: ${item}`),
   ]));
+  elements.analysisGuidance.appendChild(createFishboneSection(result?.fishbone_diagram));
+  elements.analysisGuidance.appendChild(createMindmapSection(result?.mindmap_tree));
 }
 
 function createSummaryField(label, id, value, type = "text", options = []) {
@@ -986,6 +1114,7 @@ async function suggestTestCases() {
 async function runAnalysis() {
   requireSession();
   if (!state.apiConfigured) throw new Error("请先通过 AI 验证。");
+  validateAnalysisPrerequisites();
   resetWorkflow();
   updateWorkflow("session", "running", "正在读取当前 Session、步骤、证据和历史沉淀...");
   updateWorkflow("provider", "running", "准备使用当前 AI 配置...");
@@ -1042,11 +1171,33 @@ async function loadKnowledge(keyword = "") {
 
 function renderKnowledge() {
   elements.knowledgeList.innerHTML = "";
+  elements.knowledgeTagCloud.innerHTML = "";
   if (!state.knowledge.length) {
     elements.knowledgeList.innerHTML = '<p class="helper">还没有沉淀到知识库的条目。</p>';
     elements.knowledgeDetail.innerHTML = '<p class="helper">从一个完成的 Session 生成知识条目后，这里会显示详情。</p>';
     return;
   }
+  const tagCounter = new Map();
+  state.knowledge.forEach((item) => {
+    (item.tags || []).forEach((tag) => {
+      const key = String(tag || "").trim();
+      if (!key) return;
+      tagCounter.set(key, (tagCounter.get(key) || 0) + 1);
+    });
+  });
+  [...tagCounter.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-CN"))
+    .forEach(([tag, count]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tag-chip";
+      button.textContent = `${tag} · ${count}`;
+      button.addEventListener("click", () => {
+        elements.knowledgeSearch.value = tag;
+        loadKnowledge(tag).catch(showGenericError);
+      });
+      elements.knowledgeTagCloud.appendChild(button);
+    });
   state.knowledge.forEach((item) => {
     const article = document.createElement("article");
     article.className = `list-item selectable ${state.selectedKnowledgeId === item.id ? "active" : ""}`;
@@ -1067,6 +1218,23 @@ function renderKnowledge() {
     elements.knowledgeDetail.appendChild(createListSection("关联 TestCase", (detail.relatedCases || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))));
     elements.knowledgeDetail.appendChild(createListSection("标签", (detail.tags || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))));
   }
+}
+
+function applySelectedKnowledgeToAnalysis() {
+  const detail = state.knowledge.find((item) => item.id === state.selectedKnowledgeId);
+  if (!detail) {
+    throw new Error("请先在知识库里选择一条经验。");
+  }
+  const lines = [
+    `参考知识条目：${detail.title}`,
+    `根因：${detail.rootCause || "无"}`,
+    `解决方案：${detail.solution || "无"}`,
+    `验证方法：${detail.validation || "无"}`,
+    `标签：${(detail.tags || []).join(", ") || "无"}`,
+  ];
+  const existing = elements.analysisRequest.value.trim();
+  elements.analysisRequest.value = existing ? `${existing}\n\n${lines.join("\n")}` : lines.join("\n");
+  setCurrentView("analysis");
 }
 
 async function createKnowledgeFromCurrentSession() {
@@ -1105,6 +1273,13 @@ elements.saveAnalysisSummaryBtn.addEventListener("click", () => saveAnalysisSumm
 elements.compareSelectedBtn.addEventListener("click", compareSelectedAnalyses);
 elements.searchKnowledgeBtn.addEventListener("click", () => loadKnowledge(elements.knowledgeSearch.value.trim()).catch(showGenericError));
 elements.createKnowledgeBtn.addEventListener("click", () => createKnowledgeFromCurrentSession().catch(showGenericError));
+elements.applyKnowledgeBtn.addEventListener("click", () => {
+  try {
+    applySelectedKnowledgeToAnalysis();
+  } catch (error) {
+    showGenericError(error);
+  }
+});
 elements.workflowStage.addEventListener("change", () => {
   state.currentStepKey = elements.workflowStage.value;
   renderStepForm();

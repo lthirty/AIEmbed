@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.12.0"
+APP_VERSION = "v0.13.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1734,10 +1734,20 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "possible_causes": [{"label": "", "confidence": 0.0, "reasoning": "", "required_next_check": ""}],
         "validation_steps": [{"step_id": "V1", "goal": "", "instructions": "", "expected_result": "", "risk": "low"}],
         "missing_information": [""],
+        "guidance_checklist": [{"order": 1, "action": "", "why": "", "done_when": ""}],
+        "evidence_checklist": [{"evidence_type": "", "purpose": "", "status": "missing | ready"}],
         "priority": "P1",
         "risk_level": "low",
         "workflow_guidance": [{"stage": "", "guidance": "", "completion_hint": ""}],
         "suggested_commands_or_snippets": [{"kind": "serial", "content": ""}],
+        "fishbone_diagram": {
+            "problem": "",
+            "branches": [{"branch": "", "causes": [""]}],
+        },
+        "mindmap_tree": {
+            "root": "",
+            "children": [{"title": "", "children": [""]}],
+        },
         "related_assets": {
             "recommended_test_cases": [""],
             "similar_session_hints": [""],
@@ -1752,6 +1762,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "你必须只根据提供的资料、串口日志、导入信息、附件说明、历史沉淀和测试库进行推断，禁止臆造。"
         "请优先遵循六步协议：现象、分层分析、验证方法、根因、解决方案、经验总结。"
         "重点输出：现象总结、分层分析、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
+        "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
         "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
         f"session:\n{json.dumps({k: session_payload.get(k) for k in ['id', 'title', 'customerName', 'deviceModel', 'serialNumber', 'deviceIp', 'issueType', 'severity', 'workflowStage', 'symptom', 'owner', 'status', 'createdAt', 'updatedAt']}, ensure_ascii=False, indent=2)}\n\n"
@@ -1790,9 +1801,13 @@ def store_analysis(session_id: str, request_text: str, result_json: dict, raw_te
     result_json.setdefault("serial_number", session_payload.get("serialNumber", ""))
     result_json.setdefault("phenomenon_summary", "")
     result_json.setdefault("layered_analysis", [])
+    result_json.setdefault("guidance_checklist", [])
+    result_json.setdefault("evidence_checklist", [])
     result_json.setdefault("priority", "P1")
     result_json.setdefault("risk_level", "low")
     result_json.setdefault("workflow_guidance", [])
+    result_json.setdefault("fishbone_diagram", {"problem": "", "branches": []})
+    result_json.setdefault("mindmap_tree", {"root": "", "children": []})
     result_json.setdefault("related_assets", {"recommended_test_cases": [], "similar_session_hints": [], "reusable_patterns": []})
     conn = get_conn()
     try:

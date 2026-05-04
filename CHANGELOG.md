@@ -2,6 +2,16 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.13.0 - 2026-05-04
+
+- Reordered the Analysis Center into strict top-to-bottom logic: `Evidence Panel -> Workflow Navigation -> Step Content -> AI Assistant -> 分析结果 -> 历史分析`.
+- Added evidence-first gating so AI analysis now refuses to start until the current Session has evidence and a clear phenomenon description.
+- Strengthened the guidance area to render in thought order, including missing-input checklist, evidence checklist, recommended testcases, workflow checklist, reusable assets, fishbone diagram, and mind map.
+- Converted the major page grids to single-column stacking so each center page now reads from top to bottom instead of left-to-right panel hopping.
+- Upgraded the Library page with tag-cloud navigation and one-click `应用到当前分析`, so existing knowledge can be pulled directly into the current analysis request.
+- Expanded the AI prompt/result schema with `guidance_checklist`, `evidence_checklist`, `fishbone_diagram`, and `mindmap_tree` to make analysis output more guided and reusable.
+- Bumped the local workbench version to `v0.13.0`.
+
 ## v0.12.0 - 2026-05-04
 
 - Rebuilt the local web app into the four-page structure defined by `Embedded Evidence Workbench Web Spec v1.0`: `Overview / Test Center / Analysis Center / Library`.
