@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.14.3"
+APP_VERSION = "v0.15.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1341,13 +1341,17 @@ def session_work_dir(session_id: str) -> Path:
 
 
 def session_markdown_path(session_id: str) -> Path:
-    return ROOT_DIR / "分析内容及结果.md"
+    return ROOT_DIR / "项目总文档.md"
 
 
-def write_session_markdown(session_id: str) -> None:
+DOC_AUTO_SECTION_START = "<!-- AUTO_ANALYSIS_START -->"
+DOC_AUTO_SECTION_END = "<!-- AUTO_ANALYSIS_END -->"
+
+
+def build_session_markdown(session_id: str) -> str:
     session_payload = get_session(session_id)
     lines: list[str] = []
-    lines.append(f"# {session_payload.get('title') or '未命名会话'}")
+    lines.append(f"## 最新分析内容与结果：{session_payload.get('title') or '未命名会话'}")
     lines.append("")
     lines.append("## 会话信息")
     lines.append("")
@@ -1464,7 +1468,35 @@ def write_session_markdown(session_id: str) -> None:
                 lines.append("```")
                 lines.append("")
 
-    session_markdown_path(session_id).write_text("\n".join(lines), encoding="utf-8")
+    return "\n".join(lines)
+
+
+def write_session_markdown(session_id: str) -> None:
+    path = session_markdown_path(session_id)
+    auto_section = f"{DOC_AUTO_SECTION_START}\n{build_session_markdown(session_id).rstrip()}\n{DOC_AUTO_SECTION_END}"
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    if DOC_AUTO_SECTION_START in content and DOC_AUTO_SECTION_END in content:
+        content = re.sub(
+            rf"{re.escape(DOC_AUTO_SECTION_START)}[\s\S]*?{re.escape(DOC_AUTO_SECTION_END)}",
+            auto_section,
+            content,
+            count=1,
+        )
+    elif content.strip():
+        content = content.rstrip() + "\n\n" + auto_section + "\n"
+    else:
+        content = auto_section + "\n"
+    path.write_text(content, encoding="utf-8")
+
+
+def refresh_master_document_from_latest_session() -> None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT id FROM sessions ORDER BY updated_at DESC, created_at DESC LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    if row and row["id"]:
+        write_session_markdown(row["id"])
 
 
 def list_serial_port_dicts() -> list[dict]:
@@ -2587,6 +2619,7 @@ def main() -> int:
 
     init_storage()
     ensure_default_library_entries()
+    refresh_master_document_from_latest_session()
     server = ThreadingHTTPServer((HOST, PORT), ViewerHandler)
     provider_config = load_provider_config()
     print(f"Local prototype workbench: http://{HOST}:{PORT}/")

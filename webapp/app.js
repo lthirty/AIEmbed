@@ -276,7 +276,6 @@ function setCurrentView(view) {
   state.currentView = view;
   const titles = {
     overview: ["Overview", "系统入口、状态概览和快速动作。"],
-    test: ["Test Center", "测试数据生产、自动化执行和日志采集。"],
     analysis: ["Analysis Center", "按强制状态机推进问题闭环。"],
     library: ["Library", "经验沉淀、根因复用和知识检索。"],
   };
@@ -1319,7 +1318,7 @@ elements.saveSessionMetaBtn.addEventListener("click", () => saveSessionMeta().ca
 elements.deleteSessionBtn.addEventListener("click", () => deleteSession().catch(showGenericError));
 elements.qaNewSession.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 elements.qaImportMaterial.addEventListener("click", () => setCurrentView("analysis"));
-elements.qaStartTest.addEventListener("click", () => setCurrentView("test"));
+elements.qaStartTest.addEventListener("click", () => setCurrentView("library"));
 elements.qaStartAnalysis.addEventListener("click", () => setCurrentView("analysis"));
 elements.saveTestCaseBtn.addEventListener("click", () => saveTestCase().catch(showGenericError));
 elements.runSelectedTestBtn.addEventListener("click", () => runSelectedTestCase().catch(showGenericError));
