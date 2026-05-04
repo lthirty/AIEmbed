@@ -2,6 +2,17 @@
 
 All notable changes to this project should be recorded in this file.
 
+## v0.11.0 - 2026-05-04
+
+- Refactored the local web UI from a feature pile into a `Session 流程工作台`, keeping `AI 设置` and `log 收集` while reorganizing the page around guided issue analysis.
+- Added session workflow metadata fields: `issueType`, `severity`, `workflowStage`, `symptom`, and `owner`.
+- Added a new `/api/workbench/overview` endpoint to summarize session, evidence, analysis, and test-library accumulation for the homepage overview cards.
+- Added a guided workflow panel with six protocol stages: `现象 / 分层分析 / 验证方法 / 根因 / 解决方案 / 经验总结`.
+- Added an `开放资产库` view in the Session detail response so the page can show recent sessions, recent analyses, and reusable test cases alongside the current workflow.
+- Upgraded the AI analysis prompt to inject workflow protocol and historical library context, so the model now produces `layered_analysis`, `workflow_guidance`, and `related_assets` in addition to the earlier structured result.
+- Updated the root `分析内容及结果.md` export to include the new session workflow fields and layered-analysis section.
+- Bumped the local workbench version to `v0.11.0`.
+
 ## v0.10.0 - 2026-05-04
 
 - Added `test_cases` and `test_runs` data models to the local SQLite store.

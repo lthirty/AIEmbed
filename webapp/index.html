@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ESP32 原型机调试工作台</title>
+  <title>嵌入式自动测试与问题证据管理工作台</title>
   <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -11,9 +11,9 @@
   <main class="app-shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">ESP32 Prototype Workbench</p>
-        <h1>自动测试、证据采集、问题 Session 与 AI 辅助摘要</h1>
-        <p class="subtext">ESP32-CAM 在这里是原型机信息采集节点，不是主角。主流程围绕测试用例、资料导入、串口日志、问题 session 和结构化分析结果展开。</p>
+        <p class="eyebrow">Embedded Evidence Workbench</p>
+        <h1>自动测试、问题证据闭环与开放知识积累</h1>
+        <p class="subtext">目标不是做一个新的串口工具，而是让用户跟着 Web 页的流程完成问题分析、验证和沉淀。AI 负责摘要、引导和复用建议，主线围绕 Session、测试库、证据和历史积累展开。</p>
         <p class="version-line">UI 版本：<strong id="app-version">-</strong></p>
       </div>
       <div class="hero-card">
@@ -30,6 +30,10 @@
           <strong id="active-session-label">未选择</strong>
         </div>
         <div class="status-row">
+          <span>当前阶段</span>
+          <strong id="active-stage-label">现象</strong>
+        </div>
+        <div class="status-row">
           <span>工作台版本</span>
           <strong id="hero-app-version">-</strong>
         </div>
@@ -37,6 +41,34 @@
     </section>
 
     <section class="workspace">
+      <section class="panel overview-panel">
+        <details open>
+          <summary class="summary-head">
+            <span>工作台概览</span>
+            <span class="summary-helper">先看当前积累规模，再进入本次 Session</span>
+          </summary>
+          <div class="details-body">
+            <div id="overview-counts" class="overview-grid"></div>
+            <div class="overview-columns">
+              <section class="overview-column">
+                <div class="panel-head">
+                  <h2>问题类型分布</h2>
+                  <span class="helper">帮助判断积累方向</span>
+                </div>
+                <div id="overview-issue-types" class="tag-list"></div>
+              </section>
+              <section class="overview-column">
+                <div class="panel-head">
+                  <h2>严重级别分布</h2>
+                  <span class="helper">看当前风险密度</span>
+                </div>
+                <div id="overview-severities" class="tag-list"></div>
+              </section>
+            </div>
+          </div>
+        </details>
+      </section>
+
       <section class="panel ai-panel">
         <details id="ai-settings-panel" open>
           <summary class="summary-head">
@@ -93,7 +125,39 @@
                 序号
                 <input id="serial-number" type="text" placeholder="例如 SN-2026-0001">
               </label>
+              <label>
+                问题类型
+                <input id="issue-type" type="text" placeholder="例如 I2C / UART / WiFi / Power">
+              </label>
+              <label>
+                严重级别
+                <select id="severity">
+                  <option value="P0">P0</option>
+                  <option value="P1" selected>P1</option>
+                  <option value="P2">P2</option>
+                  <option value="P3">P3</option>
+                </select>
+              </label>
+              <label>
+                当前阶段
+                <select id="workflow-stage">
+                  <option value="phenomenon">现象</option>
+                  <option value="layered_analysis">分层分析</option>
+                  <option value="validation">验证方法</option>
+                  <option value="root_cause">根因</option>
+                  <option value="solution">解决方案</option>
+                  <option value="lessons">经验总结</option>
+                </select>
+              </label>
+              <label>
+                Owner
+                <input id="owner" type="text" placeholder="例如 HW-A / FW-B">
+              </label>
             </div>
+            <label>
+              问题现象
+              <textarea id="session-symptom" rows="4" placeholder="先记录当前看到的现象、影响范围和触发条件"></textarea>
+            </label>
             <div class="inline-actions">
               <button id="create-session-btn" type="button">创建新会话</button>
               <button id="save-session-meta-btn" type="button">保存当前会话信息</button>
@@ -108,6 +172,53 @@
                 <div id="sessions-list" class="sessions-list"></div>
               </div>
             </details>
+          </div>
+        </details>
+      </section>
+
+      <section class="panel workflow-panel">
+        <details open>
+          <summary class="summary-head">
+            <span>Session 流程工作台</span>
+            <span class="summary-helper">按六步协议推进，而不是自由聊天</span>
+          </summary>
+          <div class="details-body">
+            <div class="workbench-grid">
+              <section class="workbench-column">
+                <div class="panel-head">
+                  <h2>流程导航</h2>
+                  <span class="helper">当前会话的分析步骤</span>
+                </div>
+                <div id="session-stage-nav" class="stage-nav"></div>
+              </section>
+              <section class="workbench-column">
+                <div class="panel-head">
+                  <h2>当前步骤指导</h2>
+                  <span class="helper">告诉用户此刻应补什么信息、做什么验证</span>
+                </div>
+                <div id="stage-guidance" class="guidance-card"></div>
+              </section>
+              <section class="workbench-column">
+                <div class="panel-head">
+                  <h2>开放资产库</h2>
+                  <span class="helper">历史 Session、分析沉淀和测试库</span>
+                </div>
+                <div class="library-stack">
+                  <article class="library-card">
+                    <h3>最近 Session</h3>
+                    <div id="library-sessions" class="library-list"></div>
+                  </article>
+                  <article class="library-card">
+                    <h3>最近分析沉淀</h3>
+                    <div id="library-analyses" class="library-list"></div>
+                  </article>
+                  <article class="library-card">
+                    <h3>测试库</h3>
+                    <div id="library-test-cases" class="library-list"></div>
+                  </article>
+                </div>
+              </section>
+            </div>
           </div>
         </details>
       </section>
@@ -349,6 +460,14 @@
             <section class="steps-box">
               <span class="role">ANALYSIS WORKFLOW</span>
               <div id="workflow-steps" class="workflow-steps workflow-inline"></div>
+            </section>
+
+            <section class="analysis-result-box">
+              <div class="panel-head">
+                <span class="role">流程化引导</span>
+                <span class="helper">AI 根据当前阶段和历史库给出的行动建议</span>
+              </div>
+              <div id="analysis-guidance" class="analysis-readable"></div>
             </section>
 
             <section class="analysis-result-box">

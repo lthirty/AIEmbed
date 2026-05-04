@@ -80,6 +80,119 @@ h2 { margin-bottom: 8px; }
   gap: 18px;
 }
 
+.overview-grid,
+.overview-columns,
+.workbench-grid,
+.library-stack,
+.library-list,
+.tag-list,
+.stage-nav {
+  display: grid;
+  gap: 12px;
+}
+
+.overview-grid {
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+}
+
+.overview-card,
+.guidance-card,
+.library-card,
+.library-item,
+.stage-pill {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(247, 242, 231, 0.82);
+}
+
+.overview-card,
+.guidance-card,
+.library-card,
+.library-item {
+  padding: 14px;
+}
+
+.overview-value {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.overview-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.overview-columns,
+.workbench-grid {
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+}
+
+.workbench-column,
+.overview-column {
+  display: grid;
+  gap: 12px;
+}
+
+.tag-list {
+  grid-template-columns: repeat(auto-fit, minmax(140px, max-content));
+}
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0, 121, 107, 0.1);
+  color: var(--text);
+  border: 1px solid rgba(0, 121, 107, 0.18);
+}
+
+.stage-nav {
+  grid-template-columns: 1fr;
+}
+
+.stage-pill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  color: var(--text);
+  background: #fff;
+}
+
+.stage-pill.active {
+  background: linear-gradient(135deg, rgba(216, 111, 45, 0.16), rgba(0, 121, 107, 0.16));
+  border-color: rgba(0, 121, 107, 0.26);
+}
+
+.stage-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+}
+
+.guidance-card h3,
+.library-card h3 {
+  margin-bottom: 10px;
+}
+
+.library-item strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.library-item p {
+  margin: 0;
+  color: var(--muted);
+}
+
 .summary-head {
   display: flex;
   justify-content: space-between;
@@ -455,6 +568,11 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
 }
 
 @media (max-width: 1280px) {
+  .overview-grid {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+  .overview-columns,
+  .workbench-grid,
   .session-grid,
   .workflow-inline,
   .summary-edit-grid,
@@ -468,6 +586,9 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
 
 @media (max-width: 900px) {
   .hero,
+  .overview-grid,
+  .overview-columns,
+  .workbench-grid,
   .session-grid,
   .workflow-inline,
   .summary-edit-grid,

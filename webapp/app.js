@@ -3,6 +3,10 @@ const elements = {
   heroAppVersion: document.getElementById("hero-app-version"),
   providerStatus: document.getElementById("provider-status"),
   providerModel: document.getElementById("provider-model"),
+  activeStageLabel: document.getElementById("active-stage-label"),
+  overviewCounts: document.getElementById("overview-counts"),
+  overviewIssueTypes: document.getElementById("overview-issue-types"),
+  overviewSeverities: document.getElementById("overview-severities"),
   providerName: document.getElementById("provider-name"),
   apiBaseUrl: document.getElementById("api-base-url"),
   apiKey: document.getElementById("api-key"),
@@ -16,6 +20,11 @@ const elements = {
   sessionCustomer: document.getElementById("session-customer"),
   deviceModel: document.getElementById("device-model"),
   serialNumber: document.getElementById("serial-number"),
+  issueType: document.getElementById("issue-type"),
+  severity: document.getElementById("severity"),
+  workflowStage: document.getElementById("workflow-stage"),
+  sessionSymptom: document.getElementById("session-symptom"),
+  owner: document.getElementById("owner"),
   deviceIp: document.getElementById("device-ip"),
   createSessionBtn: document.getElementById("create-session-btn"),
   saveSessionMetaBtn: document.getElementById("save-session-meta-btn"),
@@ -23,6 +32,11 @@ const elements = {
   historySessionsPanel: document.getElementById("history-sessions-panel"),
   sessionsList: document.getElementById("sessions-list"),
   activeSessionLabel: document.getElementById("active-session-label"),
+  sessionStageNav: document.getElementById("session-stage-nav"),
+  stageGuidance: document.getElementById("stage-guidance"),
+  librarySessions: document.getElementById("library-sessions"),
+  libraryAnalyses: document.getElementById("library-analyses"),
+  libraryTestCases: document.getElementById("library-test-cases"),
   materialTitle: document.getElementById("material-title"),
   materialFile: document.getElementById("material-file"),
   uploadMaterialBtn: document.getElementById("upload-material-btn"),
@@ -63,6 +77,7 @@ const elements = {
   captureBeforeAnalyze: document.getElementById("capture-before-analyze"),
   analyzeBtn: document.getElementById("analyze-btn"),
   workflowSteps: document.getElementById("workflow-steps"),
+  analysisGuidance: document.getElementById("analysis-guidance"),
   analysisResult: document.getElementById("analysis-result"),
   saveAnalysisSummaryBtn: document.getElementById("save-analysis-summary-btn"),
   analysisCount: document.getElementById("analysis-count"),
@@ -73,6 +88,7 @@ const elements = {
 
 const state = {
   apiConfigured: false,
+  overview: null,
   sessions: [],
   testCases: [],
   testRuns: [],
@@ -80,6 +96,7 @@ const state = {
   serialStatus: null,
   latestAnalysis: null,
   selectedCompareIds: [],
+  activeSessionDetail: null,
 };
 
 const workflowTemplate = [
@@ -131,6 +148,141 @@ function renderWorkflow() {
     article.querySelector(".step-detail").textContent = step.detail;
     elements.workflowSteps.appendChild(article);
   }
+}
+
+function renderOverview() {
+  const overview = state.overview || {};
+  const counts = overview.counts || {};
+  const countItems = [
+    ["会话总数", counts.sessions || 0],
+    ["未关闭 Session", counts.openSessions || 0],
+    ["证据条目", counts.evidence || 0],
+    ["分析记录", counts.analyses || 0],
+    ["测试用例", counts.testCases || 0],
+    ["测试执行", counts.testRuns || 0],
+  ];
+  elements.overviewCounts.innerHTML = countItems
+    .map(
+      ([label, value]) => `
+        <article class="overview-card">
+          <div class="overview-value">${value}</div>
+          <div class="overview-label">${label}</div>
+        </article>
+      `,
+    )
+    .join("");
+  elements.overviewIssueTypes.innerHTML = (overview.issueTypes || []).length
+    ? (overview.issueTypes || []).map((item) => `<span class="tag-pill">${item.label} · ${item.count}</span>`).join("")
+    : '<p class="helper">还没有问题类型积累。</p>';
+  elements.overviewSeverities.innerHTML = (overview.severities || []).length
+    ? (overview.severities || []).map((item) => `<span class="tag-pill">${item.label} · ${item.count}</span>`).join("")
+    : '<p class="helper">还没有严重级别分布。</p>';
+}
+
+function defaultStageGuidance(stageKey) {
+  const mapping = {
+    phenomenon: {
+      title: "现象",
+      points: ["先写清楚症状、影响范围和复现条件。", "优先导入首批资料和串口日志。", "如果 AI 无法判断，先补缺失信息而不是追问结论。"],
+    },
+    layered_analysis: {
+      title: "分层分析",
+      points: ["判断更像硬件、接口、驱动还是系统层。", "结合历史 Session 看类似问题通常卡在哪一层。", "把当前怀疑层写进分析结果，后续验证会更聚焦。"],
+    },
+    validation: {
+      title: "验证方法",
+      points: ["优先选择可重复执行的测试用例。", "如果当前测试库不够，先保存一个最小用例。", "日志、资料、抓拍和测试结果要形成证据闭环。"],
+    },
+    root_cause: {
+      title: "根因",
+      points: ["根因必须绑定证据，不要只写猜测。", "优先排除法，而不是一次写多个互斥结论。", "如果证据不足，回到前面阶段补验证。"],
+    },
+    solution: {
+      title: "解决方案",
+      points: ["记录 workaround、正式修复和回归动作。", "说明修复影响范围和需要复测的项。", "把后续需要沉淀成测试的动作提前列出来。"],
+    },
+    lessons: {
+      title: "经验总结",
+      points: ["提炼适用条件、根因标签和复用规则。", "把高价值步骤转成测试用例或模板。", "为后续 Case 沉淀准备统一结论。"],
+    },
+  };
+  return mapping[stageKey] || mapping.phenomenon;
+}
+
+function renderStageNav(sessionDetail) {
+  const stages = sessionDetail?.workflowStages || state.overview?.workflowStages || [];
+  const currentStage = sessionDetail?.workflowStage || "phenomenon";
+  elements.activeStageLabel.textContent = (stages.find((item) => item.key === currentStage)?.label) || "现象";
+  elements.sessionStageNav.innerHTML = "";
+  stages.forEach((stage, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `stage-pill ${stage.key === currentStage ? "active" : ""}`;
+    button.innerHTML = `<span class="stage-index">0${index + 1}</span><span>${stage.label}</span>`;
+    button.addEventListener("click", () => {
+      elements.workflowStage.value = stage.key;
+      elements.activeStageLabel.textContent = stage.label;
+      renderStageGuidance(stage.key);
+    });
+    elements.sessionStageNav.appendChild(button);
+  });
+  renderStageGuidance(currentStage);
+}
+
+function renderStageGuidance(stageKey) {
+  const current = defaultStageGuidance(stageKey);
+  elements.stageGuidance.innerHTML = `
+    <h3>${current.title}</h3>
+    <div class="result-list">
+      ${current.points.map((point) => `<article class="result-card">${point}</article>`).join("")}
+    </div>
+  `;
+}
+
+function renderLibraryContext(sessionDetail) {
+  const library = sessionDetail?.libraryContext || {};
+  const sessionItems = library.recentSessions || [];
+  const analysisItems = library.recentAnalyses || [];
+  const testCaseItems = library.testCases || [];
+  elements.librarySessions.innerHTML = sessionItems.length
+    ? sessionItems
+        .map(
+          (item) => `
+            <article class="library-item">
+              <strong>${item.title}</strong>
+              <p>${item.issueType || "未分类"} · ${item.severity || "P1"} · ${item.workflowStage || "phenomenon"}</p>
+              <p>${item.symptom || "无现象描述"}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : '<p class="helper">还没有可复用的历史 Session。</p>';
+  elements.libraryAnalyses.innerHTML = analysisItems.length
+    ? analysisItems
+        .map(
+          (item) => `
+            <article class="library-item">
+              <strong>${item.sessionTitle || "未命名会话"}</strong>
+              <p>${item.issueType || "未分类"} · ${item.priority || "P1"} · ${item.riskLevel || "low"}</p>
+              <p>${item.phenomenonSummary || "无摘要"}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : '<p class="helper">还没有历史分析沉淀。</p>';
+  elements.libraryTestCases.innerHTML = testCaseItems.length
+    ? testCaseItems
+        .map(
+          (item) => `
+            <article class="library-item">
+              <strong>${item.caseCode}</strong>
+              <p>${item.name}</p>
+              <p>${item.category || "未分类"} · ${item.target || "未填 target"}</p>
+            </article>
+          `,
+        )
+        .join("")
+    : '<p class="helper">测试库还是空的，先沉淀一条最小验证用例。</p>';
 }
 
 async function apiGet(url) {
@@ -194,6 +346,11 @@ async function loadConfig() {
   await validateSavedProvider();
 }
 
+async function loadOverview() {
+  state.overview = await apiGet("/api/workbench/overview");
+  renderOverview();
+}
+
 function defaultTestStepsJson() {
   return JSON.stringify(
     [
@@ -222,6 +379,7 @@ function renderSessions() {
         <div>
           <div class="session-chip-title">${session.title}</div>
           <div class="session-chip-meta">${session.customerName || "未填客户"} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"}</div>
+          <div class="session-chip-meta">${session.issueType || "未分类"} · ${session.severity || "P1"} · ${session.workflowStage || "phenomenon"}</div>
           <div class="session-chip-meta">${session.updatedAt}</div>
         </div>
         <div class="inline-actions compact">
@@ -406,6 +564,7 @@ function renderReadableAnalysis(analysis) {
   state.latestAnalysis = analysis;
   if (!analysis || !analysis.result || typeof analysis.result !== "object") {
     elements.analysisResult.textContent = "尚未分析";
+    elements.analysisGuidance.innerHTML = '<p class="helper">等待结构化分析后，这里会显示按流程整理的引导建议。</p>';
     return;
   }
   const result = analysis.result;
@@ -418,11 +577,30 @@ function renderReadableAnalysis(analysis) {
   summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", result.risk_level || "low", "select", ["low", "medium", "high", "critical"]));
   elements.analysisResult.appendChild(summaryGrid);
   elements.analysisResult.appendChild(createSummaryField("现象总结", "summary-phenomenon", result.phenomenon_summary || "", "textarea"));
+  elements.analysisResult.appendChild(createListSection("分层分析", result.layered_analysis || []));
   elements.analysisResult.appendChild(createListSection("已用证据", result.evidence_used || []));
   elements.analysisResult.appendChild(createListSection("可能原因", result.possible_causes || []));
   elements.analysisResult.appendChild(createListSection("验证步骤", result.validation_steps || []));
   elements.analysisResult.appendChild(createListSection("缺失信息", result.missing_information || []));
   elements.analysisResult.appendChild(createListSection("建议命令/片段", result.suggested_commands_or_snippets || []));
+  renderAnalysisGuidance(result);
+}
+
+function renderAnalysisGuidance(result) {
+  const sections = [];
+  sections.push(createListSection("流程引导", result.workflow_guidance || []));
+  const relatedAssets = result.related_assets || {};
+  sections.push(
+    createListSection("推荐测试用例", (relatedAssets.recommended_test_cases || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))),
+  );
+  sections.push(
+    createListSection("相似 Session 提示", (relatedAssets.similar_session_hints || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))),
+  );
+  sections.push(
+    createListSection("可复用规则", (relatedAssets.reusable_patterns || []).map((item) => (typeof item === "string" ? item : JSON.stringify(item)))),
+  );
+  elements.analysisGuidance.innerHTML = "";
+  sections.forEach((section) => elements.analysisGuidance.appendChild(section));
 }
 
 function renderAnalyses(analyses) {
@@ -479,6 +657,12 @@ async function loadSessions() {
     await loadSessionDetail(state.activeSessionId);
   } else {
     elements.activeSessionLabel.textContent = "未选择";
+    elements.activeStageLabel.textContent = "现象";
+    renderStageGuidance("phenomenon");
+    elements.sessionStageNav.innerHTML = "";
+    elements.librarySessions.innerHTML = '<p class="helper">请选择或新建会话。</p>';
+    elements.libraryAnalyses.innerHTML = '<p class="helper">请选择或新建会话。</p>';
+    elements.libraryTestCases.innerHTML = '<p class="helper">测试库会在这里显示。</p>';
     renderEvidence([]);
     renderAnalyses([]);
   }
@@ -498,6 +682,7 @@ async function loadTestRuns() {
 
 async function loadSessionDetail(sessionId) {
   const data = await apiGet(`/api/sessions/${sessionId}`);
+  state.activeSessionDetail = data;
   const index = state.sessions.findIndex((item) => item.id === data.id);
   if (index >= 0) state.sessions[index] = { ...state.sessions[index], ...data };
   elements.activeSessionLabel.textContent = `${data.title} · ${data.deviceModel || "未填型号"} · ${data.serialNumber || "未填序号"}`;
@@ -505,8 +690,15 @@ async function loadSessionDetail(sessionId) {
   elements.sessionCustomer.value = data.customerName || "";
   elements.deviceModel.value = data.deviceModel || "";
   elements.serialNumber.value = data.serialNumber || "";
+  elements.issueType.value = data.issueType || "";
+  elements.severity.value = data.severity || "P1";
+  elements.workflowStage.value = data.workflowStage || "phenomenon";
+  elements.sessionSymptom.value = data.symptom || "";
+  elements.owner.value = data.owner || "";
   elements.deviceIp.value = data.deviceIp || "";
   renderSessions();
+  renderStageNav(data);
+  renderLibraryContext(data);
   renderEvidence(data.evidence || []);
   renderAnalyses(data.analyses || []);
 }
@@ -517,10 +709,15 @@ async function createSession() {
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
     serialNumber: elements.serialNumber.value.trim(),
+    issueType: elements.issueType.value.trim(),
+    severity: elements.severity.value,
+    workflowStage: elements.workflowStage.value,
+    symptom: elements.sessionSymptom.value.trim(),
+    owner: elements.owner.value.trim(),
     deviceIp: elements.deviceIp.value.trim(),
   });
   state.activeSessionId = data.session.id;
-  await loadSessions();
+  await Promise.all([loadOverview(), loadSessions()]);
 }
 
 async function saveSessionMeta() {
@@ -530,9 +727,14 @@ async function saveSessionMeta() {
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
     serialNumber: elements.serialNumber.value.trim(),
+    issueType: elements.issueType.value.trim(),
+    severity: elements.severity.value,
+    workflowStage: elements.workflowStage.value,
+    symptom: elements.sessionSymptom.value.trim(),
+    owner: elements.owner.value.trim(),
     deviceIp: elements.deviceIp.value.trim(),
   });
-  await loadSessionDetail(state.activeSessionId);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
 }
 
 async function deleteSession() {
@@ -543,7 +745,7 @@ async function deleteSession() {
   if (!response.ok) throw new Error(data.error || "delete failed");
   state.activeSessionId = "";
   state.selectedCompareIds = [];
-  await loadSessions();
+  await Promise.all([loadOverview(), loadSessions()]);
 }
 
 async function deleteSessionById(sessionId) {
@@ -555,7 +757,7 @@ async function deleteSessionById(sessionId) {
     state.activeSessionId = "";
     state.selectedCompareIds = [];
   }
-  await loadSessions();
+  await Promise.all([loadOverview(), loadSessions()]);
 }
 
 async function saveProviderConfig() {
@@ -597,7 +799,7 @@ async function uploadMaterial() {
     elements.materialResult.textContent = `资料已导入：${data.evidence.title}`;
     elements.materialTitle.value = "";
     elements.materialFile.value = "";
-    await loadSessionDetail(state.activeSessionId);
+    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
   } finally {
     elements.uploadMaterialBtn.disabled = false;
   }
@@ -620,7 +822,7 @@ async function saveTestCase() {
     enabled: true,
   });
   elements.testCaseResult.textContent = `测试用例已保存：${data.testCase.caseCode}`;
-  await loadTestCases();
+  await Promise.all([loadOverview(), loadTestCases()]);
 }
 
 async function runTestCase(testCaseId) {
@@ -633,7 +835,7 @@ async function runTestCase(testCaseId) {
     run.result === "fail"
       ? `测试失败，已自动生成问题 session：${data.generatedSessionId || "-"}`
       : `测试通过：${run.report?.caseCode || ""}`;
-  await Promise.all([loadSessions(), loadTestRuns()]);
+  await Promise.all([loadOverview(), loadSessions(), loadTestRuns()]);
 }
 
 async function uploadLogFile() {
@@ -656,7 +858,7 @@ async function uploadLogFile() {
     elements.logFileResult.textContent = `串口文件已导入：${data.evidence.title}`;
     elements.logFileTitle.value = "";
     elements.logFileInput.value = "";
-    await loadSessionDetail(state.activeSessionId);
+    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
   } finally {
     elements.uploadLogFileBtn.disabled = false;
   }
@@ -675,7 +877,7 @@ async function saveLog() {
   });
   elements.logTitle.value = "";
   elements.logContent.value = "";
-  await loadSessionDetail(state.activeSessionId);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
 }
 
 async function saveImportedInfo() {
@@ -701,7 +903,7 @@ async function saveImportedInfo() {
     elements.infoTitle.value = "";
     elements.infoContent.value = "";
     elements.infoFile.value = "";
-    await loadSessionDetail(state.activeSessionId);
+    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
   } finally {
     elements.saveInfoBtn.disabled = false;
   }
@@ -717,7 +919,7 @@ async function captureSnapshot() {
   elements.snapshotResult.textContent = "抓拍中...";
   const data = await apiPost(`/api/sessions/${state.activeSessionId}/snapshot`, { deviceIp });
   elements.snapshotResult.textContent = `抓拍已保存：${data.evidence.title}`;
-  await loadSessionDetail(state.activeSessionId);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
 }
 
 function renderSerialPorts(ports) {
@@ -782,13 +984,13 @@ async function startSerialCapture() {
   const data = await apiPost("/api/serial/start", { sessionId: state.activeSessionId, port, baud });
   renderSerialStatus(data.status);
   elements.latestSerialOutput.value = "";
-  await loadSessionDetail(state.activeSessionId);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
 }
 
 async function stopSerialCapture() {
   const data = await apiPost("/api/serial/stop", {});
   renderSerialStatus(data.status);
-  if (state.activeSessionId) await loadSessionDetail(state.activeSessionId);
+  if (state.activeSessionId) await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
 }
 
 async function runAnalysis() {
@@ -815,7 +1017,7 @@ async function runAnalysis() {
     updateWorkflow("provider", "success", "AI 配置可用。");
     updateWorkflow("request", "success", `请求已发送，请求ID：${data.requestId}`);
     updateWorkflow("response", "success", "结构化结果已解析并入库。");
-    await loadSessionDetail(state.activeSessionId);
+    await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
   } catch (error) {
     const message = error.message || "分析失败";
     if (message.includes("Snapshot")) {
@@ -850,7 +1052,7 @@ async function saveAnalysisSummary() {
     analysisId: state.latestAnalysis.id,
     result,
   });
-  await loadSessionDetail(state.activeSessionId);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
 }
 
 function compareSelectedAnalyses() {
@@ -881,8 +1083,15 @@ elements.captureSnapshotBtn.addEventListener("click", () => captureSnapshot().ca
 elements.analyzeBtn.addEventListener("click", () => runAnalysis().catch(showGenericError));
 elements.saveAnalysisSummaryBtn.addEventListener("click", () => saveAnalysisSummary().catch(showGenericError));
 elements.compareSelectedBtn.addEventListener("click", compareSelectedAnalyses);
+elements.workflowStage.addEventListener("change", () => {
+  renderStageGuidance(elements.workflowStage.value);
+  const stageMeta = (state.activeSessionDetail?.workflowStages || state.overview?.workflowStages || []).find(
+    (item) => item.key === elements.workflowStage.value,
+  );
+  elements.activeStageLabel.textContent = stageMeta?.label || "现象";
+});
 
 resetWorkflow();
 elements.testCaseSteps.value = defaultTestStepsJson();
-Promise.all([loadConfig(), loadSessions(), loadTestCases(), loadTestRuns(), loadSerialPorts(), pollSerialStatus()]).catch(showGenericError);
+Promise.all([loadConfig(), loadOverview(), loadSessions(), loadTestCases(), loadTestRuns(), loadSerialPorts(), pollSerialStatus()]).catch(showGenericError);
 startSerialPolling();

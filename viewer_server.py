@@ -21,7 +21,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.10.0"
+APP_VERSION = "v0.11.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -86,6 +86,11 @@ def init_storage() -> None:
                 device_model TEXT NOT NULL DEFAULT '',
                 serial_number TEXT NOT NULL DEFAULT '',
                 device_ip TEXT NOT NULL DEFAULT '',
+                issue_type TEXT NOT NULL DEFAULT '',
+                severity TEXT NOT NULL DEFAULT 'P1',
+                workflow_stage TEXT NOT NULL DEFAULT 'phenomenon',
+                symptom TEXT NOT NULL DEFAULT '',
+                owner TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'open',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -149,6 +154,16 @@ def init_storage() -> None:
             conn.execute("ALTER TABLE sessions ADD COLUMN device_model TEXT NOT NULL DEFAULT ''")
         if "serial_number" not in existing_columns:
             conn.execute("ALTER TABLE sessions ADD COLUMN serial_number TEXT NOT NULL DEFAULT ''")
+        if "issue_type" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN issue_type TEXT NOT NULL DEFAULT ''")
+        if "severity" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN severity TEXT NOT NULL DEFAULT 'P1'")
+        if "workflow_stage" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN workflow_stage TEXT NOT NULL DEFAULT 'phenomenon'")
+        if "symptom" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN symptom TEXT NOT NULL DEFAULT ''")
+        if "owner" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -423,6 +438,11 @@ def session_to_dict(row: sqlite3.Row) -> dict:
         "deviceModel": row["device_model"],
         "serialNumber": row["serial_number"],
         "deviceIp": row["device_ip"],
+        "issueType": row["issue_type"],
+        "severity": row["severity"],
+        "workflowStage": row["workflow_stage"],
+        "symptom": row["symptom"],
+        "owner": row["owner"],
         "status": row["status"],
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
@@ -486,14 +506,43 @@ def test_run_to_dict(row: sqlite3.Row) -> dict:
     }
 
 
-def create_session(title: str, customer_name: str, device_model: str, serial_number: str, device_ip: str = "") -> dict:
+def create_session(
+    title: str,
+    customer_name: str,
+    device_model: str,
+    serial_number: str,
+    device_ip: str = "",
+    issue_type: str = "",
+    severity: str = "P1",
+    workflow_stage: str = "phenomenon",
+    symptom: str = "",
+    owner: str = "",
+) -> dict:
     session_id = uuid4().hex
     now = now_ts()
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO sessions (id, title, customer_name, device_model, serial_number, device_ip, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)",
-            (session_id, title.strip() or "未命名会话", customer_name.strip(), device_model.strip(), serial_number.strip(), device_ip.strip(), now, now),
+            """
+            INSERT INTO sessions
+            (id, title, customer_name, device_model, serial_number, device_ip, issue_type, severity, workflow_stage, symptom, owner, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+            """,
+            (
+                session_id,
+                title.strip() or "未命名会话",
+                customer_name.strip(),
+                device_model.strip(),
+                serial_number.strip(),
+                device_ip.strip(),
+                issue_type.strip(),
+                severity.strip() or "P1",
+                workflow_stage.strip() or "phenomenon",
+                symptom.strip(),
+                owner.strip(),
+                now,
+                now,
+            ),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
@@ -504,7 +553,19 @@ def create_session(title: str, customer_name: str, device_model: str, serial_num
     return result
 
 
-def update_session(session_id: str, title: str, customer_name: str, device_model: str, serial_number: str, device_ip: str = "") -> dict:
+def update_session(
+    session_id: str,
+    title: str,
+    customer_name: str,
+    device_model: str,
+    serial_number: str,
+    device_ip: str = "",
+    issue_type: str = "",
+    severity: str = "P1",
+    workflow_stage: str = "phenomenon",
+    symptom: str = "",
+    owner: str = "",
+) -> dict:
     conn = get_conn()
     try:
         exists = conn.execute("SELECT 1 FROM sessions WHERE id = ?", (session_id,)).fetchone()
@@ -513,10 +574,23 @@ def update_session(session_id: str, title: str, customer_name: str, device_model
         conn.execute(
             """
             UPDATE sessions
-            SET title = ?, customer_name = ?, device_model = ?, serial_number = ?, device_ip = ?, updated_at = ?
+            SET title = ?, customer_name = ?, device_model = ?, serial_number = ?, device_ip = ?, issue_type = ?, severity = ?, workflow_stage = ?, symptom = ?, owner = ?, updated_at = ?
             WHERE id = ?
             """,
-            (title.strip() or "未命名会话", customer_name.strip(), device_model.strip(), serial_number.strip(), device_ip.strip(), now_ts(), session_id),
+            (
+                title.strip() or "未命名会话",
+                customer_name.strip(),
+                device_model.strip(),
+                serial_number.strip(),
+                device_ip.strip(),
+                issue_type.strip(),
+                severity.strip() or "P1",
+                workflow_stage.strip() or "phenomenon",
+                symptom.strip(),
+                owner.strip(),
+                now_ts(),
+                session_id,
+            ),
         )
         conn.commit()
         row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
@@ -652,6 +726,59 @@ def list_test_runs(limit: int = 30) -> list[dict]:
         conn.close()
 
 
+WORKFLOW_STAGES = [
+    {"key": "phenomenon", "label": "现象", "goal": "明确问题表现、影响范围和触发条件"},
+    {"key": "layered_analysis", "label": "分层分析", "goal": "判断问题更像硬件、接口、驱动还是系统层"},
+    {"key": "validation", "label": "验证方法", "goal": "选测试、补证据、执行验证步骤"},
+    {"key": "root_cause", "label": "根因", "goal": "基于证据收敛并确认最可能根因"},
+    {"key": "solution", "label": "解决方案", "goal": "记录 workaround、修复动作和回归建议"},
+    {"key": "lessons", "label": "经验总结", "goal": "沉淀 Case、标签和可复用规则"},
+]
+
+
+def build_workbench_overview() -> dict:
+    conn = get_conn()
+    try:
+        counts = {
+            "sessions": conn.execute("SELECT COUNT(1) FROM sessions").fetchone()[0],
+            "openSessions": conn.execute("SELECT COUNT(1) FROM sessions WHERE status != 'closed'").fetchone()[0],
+            "analyses": conn.execute("SELECT COUNT(1) FROM analyses").fetchone()[0],
+            "testCases": conn.execute("SELECT COUNT(1) FROM test_cases").fetchone()[0],
+            "testRuns": conn.execute("SELECT COUNT(1) FROM test_runs").fetchone()[0],
+            "evidence": conn.execute("SELECT COUNT(1) FROM evidence").fetchone()[0],
+        }
+        issue_type_rows = conn.execute(
+            """
+            SELECT issue_type, COUNT(1) AS count
+            FROM sessions
+            WHERE TRIM(issue_type) != ''
+            GROUP BY issue_type
+            ORDER BY count DESC, issue_type ASC
+            LIMIT 6
+            """
+        ).fetchall()
+        severity_rows = conn.execute(
+            """
+            SELECT severity, COUNT(1) AS count
+            FROM sessions
+            GROUP BY severity
+            ORDER BY count DESC
+            """
+        ).fetchall()
+        recent_sessions = conn.execute("SELECT * FROM sessions ORDER BY updated_at DESC LIMIT 5").fetchall()
+        recent_runs = conn.execute("SELECT * FROM test_runs ORDER BY created_at DESC LIMIT 5").fetchall()
+        return {
+            "counts": counts,
+            "issueTypes": [{"label": row["issue_type"], "count": row["count"]} for row in issue_type_rows],
+            "severities": [{"label": row["severity"], "count": row["count"]} for row in severity_rows],
+            "recentSessions": [session_to_dict(row) for row in recent_sessions],
+            "recentTestRuns": [test_run_to_dict(row) for row in recent_runs],
+            "workflowStages": WORKFLOW_STAGES,
+        }
+    finally:
+        conn.close()
+
+
 def get_session(session_id: str) -> dict:
     conn = get_conn()
     try:
@@ -663,9 +790,55 @@ def get_session(session_id: str) -> dict:
         payload = session_to_dict(row)
         payload["evidence"] = [evidence_to_dict(item) for item in evidence_rows]
         payload["analyses"] = [analysis_to_dict(item) for item in analysis_rows]
+        payload["workflowStages"] = WORKFLOW_STAGES
+        payload["libraryContext"] = build_library_context(conn, session_id)
         return payload
     finally:
         conn.close()
+
+
+def build_library_context(conn: sqlite3.Connection, session_id: str) -> dict:
+    recent_session_rows = conn.execute(
+        """
+        SELECT * FROM sessions
+        WHERE id != ?
+        ORDER BY updated_at DESC
+        LIMIT 6
+        """,
+        (session_id,),
+    ).fetchall()
+    recent_analysis_rows = conn.execute(
+        """
+        SELECT analyses.*, sessions.title AS session_title, sessions.issue_type AS issue_type
+        FROM analyses
+        JOIN sessions ON sessions.id = analyses.session_id
+        WHERE analyses.session_id != ?
+        ORDER BY analyses.created_at DESC
+        LIMIT 6
+        """,
+        (session_id,),
+    ).fetchall()
+    test_case_rows = conn.execute("SELECT * FROM test_cases ORDER BY updated_at DESC LIMIT 8").fetchall()
+    return {
+        "recentSessions": [
+            {
+                **session_to_dict(row),
+            }
+            for row in recent_session_rows
+        ],
+        "recentAnalyses": [
+            {
+                "id": row["id"],
+                "sessionId": row["session_id"],
+                "sessionTitle": row["session_title"],
+                "issueType": row["issue_type"],
+                "createdAt": row["created_at"],
+                "result": json.loads(row["result_json"] or "{}"),
+            }
+            for row in recent_analysis_rows
+        ],
+        "testCases": [test_case_to_dict(row) for row in test_case_rows],
+    }
 
 
 def create_fail_session_from_test_run(base_session: dict, test_case: dict, report: dict) -> dict:
@@ -868,6 +1041,11 @@ def write_session_markdown(session_id: str) -> None:
     lines.append(f"- 设备型号：{session_payload.get('deviceModel') or ''}")
     lines.append(f"- 序号：{session_payload.get('serialNumber') or ''}")
     lines.append(f"- 设备 IP：{session_payload.get('deviceIp') or ''}")
+    lines.append(f"- 问题类型：{session_payload.get('issueType') or ''}")
+    lines.append(f"- 严重级别：{session_payload.get('severity') or ''}")
+    lines.append(f"- 当前阶段：{session_payload.get('workflowStage') or ''}")
+    lines.append(f"- 问题现象：{session_payload.get('symptom') or ''}")
+    lines.append(f"- Owner：{session_payload.get('owner') or ''}")
     lines.append(f"- 会话状态：{session_payload.get('status') or ''}")
     lines.append("")
 
@@ -944,6 +1122,17 @@ def write_session_markdown(session_id: str) -> None:
             lines.append("#### 现象总结")
             lines.append("")
             lines.append(result.get("phenomenon_summary") or "无")
+            lines.append("")
+            lines.append("#### 分层分析")
+            lines.append("")
+            layered_items = result.get("layered_analysis") or []
+            if layered_items:
+                for entry in layered_items:
+                    lines.append(f"- {entry.get('layer') or '未命名层'}：{entry.get('judgement') or ''}")
+                    if entry.get("why"):
+                        lines.append(f"  - 原因：{entry.get('why')}")
+            else:
+                lines.append("无")
             lines.append("")
             lines.append("#### 结构化 JSON")
             lines.append("")
@@ -1169,6 +1358,50 @@ def trim_text(text: str, limit: int) -> str:
     return normalized[:limit] + "\n...[truncated]..."
 
 
+def summarize_library_context(session_payload: dict) -> dict:
+    library_context = session_payload.get("libraryContext") or {}
+    recent_sessions = []
+    for item in library_context.get("recentSessions", [])[:4]:
+        recent_sessions.append(
+            {
+                "title": item.get("title", ""),
+                "issueType": item.get("issueType", ""),
+                "severity": item.get("severity", ""),
+                "stage": item.get("workflowStage", ""),
+                "symptom": trim_text(item.get("symptom", ""), 160),
+                "updatedAt": item.get("updatedAt", ""),
+            }
+        )
+    recent_analyses = []
+    for item in library_context.get("recentAnalyses", [])[:4]:
+        result = item.get("result") or {}
+        recent_analyses.append(
+            {
+                "sessionTitle": item.get("sessionTitle", ""),
+                "issueType": item.get("issueType", ""),
+                "phenomenonSummary": trim_text(result.get("phenomenon_summary", ""), 180),
+                "priority": result.get("priority", ""),
+                "riskLevel": result.get("risk_level", ""),
+                "createdAt": item.get("createdAt", ""),
+            }
+        )
+    test_cases = []
+    for item in library_context.get("testCases", [])[:6]:
+        test_cases.append(
+            {
+                "caseCode": item.get("caseCode", ""),
+                "name": item.get("name", ""),
+                "category": item.get("category", ""),
+                "target": item.get("target", ""),
+            }
+        )
+    return {
+        "recentSessions": recent_sessions,
+        "recentAnalyses": recent_analyses,
+        "testCases": test_cases,
+    }
+
+
 def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
     evidence = session_payload.get("evidence", [])
     selected_sections: list[str] = []
@@ -1204,26 +1437,48 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
     if not selected_sections:
         selected_sections.append("当前会话还没有足够证据，请明确指出缺失信息。")
 
+    protocol = {
+        "workflow": [
+            {"stage": "phenomenon", "label": "现象", "expectation": "总结症状、触发条件、影响范围"},
+            {"stage": "layered_analysis", "label": "分层分析", "expectation": "判断更像硬件、接口、驱动或系统层问题"},
+            {"stage": "validation", "label": "验证方法", "expectation": "给出最小验证动作和证据补充顺序"},
+            {"stage": "root_cause", "label": "根因", "expectation": "说明当前最可疑的根因及证据强度"},
+            {"stage": "solution", "label": "解决方案", "expectation": "给出 workaround、修复和回归建议"},
+            {"stage": "lessons", "label": "经验总结", "expectation": "提炼为可复用规则和后续 case 方向"},
+        ]
+    }
+
     schema = {
         "phenomenon_summary": "",
+        "layered_analysis": [{"layer": "", "judgement": "", "why": ""}],
         "evidence_used": [{"evidence_title": "", "kind": "", "why_it_matters": ""}],
         "possible_causes": [{"label": "", "confidence": 0.0, "reasoning": "", "required_next_check": ""}],
         "validation_steps": [{"step_id": "V1", "goal": "", "instructions": "", "expected_result": "", "risk": "low"}],
         "missing_information": [""],
         "priority": "P1",
         "risk_level": "low",
+        "workflow_guidance": [{"stage": "", "guidance": "", "completion_hint": ""}],
         "suggested_commands_or_snippets": [{"kind": "serial", "content": ""}],
+        "related_assets": {
+            "recommended_test_cases": [""],
+            "similar_session_hints": [""],
+            "reusable_patterns": [""],
+        },
         "case_update_hint": {"should_promote_to_case": False, "candidate_root_cause_tags": [""]},
     }
 
     return (
-        "你是嵌入式原型机联调分析助手。"
-        "你必须只根据提供的资料、串口日志、导入信息、图片/文档附件说明和设备状态进行推断，禁止臆造。"
-        "重点输出：现象总结、已用证据、可能原因、缺失信息、下一步验证步骤。"
-        "如果证据不足，明确写入 missing_information。"
+        "你是嵌入式自动测试与问题证据管理工作台里的分析助手。"
+        "你的职责不是直接替工程师下最终结论，而是根据流程给出结构化分析和下一步引导。"
+        "你必须只根据提供的资料、串口日志、导入信息、附件说明、历史沉淀和测试库进行推断，禁止臆造。"
+        "请优先遵循六步协议：现象、分层分析、验证方法、根因、解决方案、经验总结。"
+        "重点输出：现象总结、分层分析、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
+        "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
-        f"session:\n{json.dumps({k: session_payload.get(k) for k in ['id', 'title', 'customerName', 'deviceIp', 'status', 'createdAt', 'updatedAt']}, ensure_ascii=False, indent=2)}\n\n"
-        f"user_request:\n{request_text.strip() or '请基于当前资料和日志自动分析。'}\n\n"
+        f"session:\n{json.dumps({k: session_payload.get(k) for k in ['id', 'title', 'customerName', 'deviceModel', 'serialNumber', 'deviceIp', 'issueType', 'severity', 'workflowStage', 'symptom', 'owner', 'status', 'createdAt', 'updatedAt']}, ensure_ascii=False, indent=2)}\n\n"
+        f"workflow_protocol:\n{json.dumps(protocol, ensure_ascii=False, indent=2)}\n\n"
+        f"knowledge_library:\n{json.dumps(summarize_library_context(session_payload), ensure_ascii=False, indent=2)}\n\n"
+        f"user_request:\n{request_text.strip() or '请基于当前资料、日志和历史沉淀自动分析，并给出流程化引导。'}\n\n"
         f"selected_evidence:\n{'\n\n'.join(selected_sections)}\n\n"
         f"json_schema_example:\n{json.dumps(schema, ensure_ascii=False, indent=2)}"
     )
@@ -1255,8 +1510,11 @@ def store_analysis(session_id: str, request_text: str, result_json: dict, raw_te
     result_json.setdefault("device_model", session_payload.get("deviceModel", ""))
     result_json.setdefault("serial_number", session_payload.get("serialNumber", ""))
     result_json.setdefault("phenomenon_summary", "")
+    result_json.setdefault("layered_analysis", [])
     result_json.setdefault("priority", "P1")
     result_json.setdefault("risk_level", "low")
+    result_json.setdefault("workflow_guidance", [])
+    result_json.setdefault("related_assets", {"recommended_test_cases": [], "similar_session_hints": [], "reusable_patterns": []})
     conn = get_conn()
     try:
         conn.execute(
@@ -1389,6 +1647,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(200, {"logs": list(reversed(REQUEST_LOGS))})
             return
 
+        if path == "/api/workbench/overview":
+            self.send_json(200, build_workbench_overview())
+            return
+
         if path == "/api/sessions":
             self.send_json(200, {"sessions": list_sessions()})
             return
@@ -1463,6 +1725,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     str(payload.get("deviceModel", "")).strip(),
                     str(payload.get("serialNumber", "")).strip(),
                     str(payload.get("deviceIp", "")).strip(),
+                    str(payload.get("issueType", "")).strip(),
+                    str(payload.get("severity", "")).strip() or "P1",
+                    str(payload.get("workflowStage", "")).strip() or "phenomenon",
+                    str(payload.get("symptom", "")).strip(),
+                    str(payload.get("owner", "")).strip(),
                 )
                 self.send_json(200, {"session": session})
             except Exception as exc:
@@ -1658,6 +1925,11 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                         str(payload.get("deviceModel", "")).strip(),
                         str(payload.get("serialNumber", "")).strip(),
                         str(payload.get("deviceIp", "")).strip(),
+                        str(payload.get("issueType", "")).strip(),
+                        str(payload.get("severity", "")).strip() or "P1",
+                        str(payload.get("workflowStage", "")).strip() or "phenomenon",
+                        str(payload.get("symptom", "")).strip(),
+                        str(payload.get("owner", "")).strip(),
                     )
                     self.send_json(200, {"ok": True, "session": session})
                     return
