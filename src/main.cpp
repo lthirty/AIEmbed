@@ -12,6 +12,7 @@ namespace {
 // v0.3.0 - WiFiManager provisioning portal, router LAN access, WiFi reset endpoint
 // v0.4.0 - Serial IP reporting improvements for customer setup and local AI viewer support
 // v0.5.0 - Replace blocking WebServer with esp_http_server for stable stream and capture concurrency
+// v0.16.0 - Project-side workbench frontend aligned with current analysis flow; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

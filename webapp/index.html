@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Embedded Evidence Workbench</title>
+  <title>嵌入式问题分析工作台</title>
   <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -11,33 +11,28 @@
   <main class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <p class="eyebrow">Embedded Evidence</p>
-        <h1>Workbench</h1>
+        <p class="eyebrow">嵌入式问题分析</p>
+        <h1>工作台</h1>
         <p class="version-line">v <strong id="app-version">-</strong></p>
       </div>
 
       <nav class="nav-list">
-        <button type="button" class="nav-item active" data-view="overview">Overview</button>
-        <button type="button" class="nav-item" data-view="analysis">Analysis Center</button>
-        <button type="button" class="nav-item" data-view="library">Library</button>
+        <button type="button" class="nav-item active" data-view="analysis">分析中心</button>
+        <button type="button" class="nav-item" data-view="library">案例库</button>
       </nav>
 
       <section class="sidebar-card">
         <div class="status-row">
-          <span>Provider</span>
+          <span>AI 提供方</span>
           <strong id="provider-status">检查中</strong>
         </div>
         <div class="status-row">
-          <span>Model</span>
+          <span>模型</span>
           <strong id="provider-model">-</strong>
         </div>
         <div class="status-row">
           <span>当前 Session</span>
           <strong id="active-session-label">未选择</strong>
-        </div>
-        <div class="status-row">
-          <span>当前步骤</span>
-          <strong id="active-stage-label">现象</strong>
         </div>
       </section>
 
@@ -75,9 +70,9 @@
     <section class="main-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Embedded Evidence Workbench</p>
-          <h2 id="page-title">Overview</h2>
-          <p id="page-subtitle" class="helper">系统入口、状态概览和快速动作。</p>
+          <p class="eyebrow">嵌入式问题分析工作台</p>
+          <h2 id="page-title">分析中心</h2>
+          <p id="page-subtitle" class="helper">围绕资料、问题描述和 AI 结构化分析推进定位。</p>
         </div>
         <div class="topbar-meta">
           <span class="meta-pill">AI 状态：<strong id="hero-provider-status">-</strong></span>
@@ -86,168 +81,38 @@
       </header>
 
       <section class="view-stack">
-        <section id="view-overview" class="view-page active">
-          <div class="overview-top">
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Overview</h3>
-                <span class="helper">入口与状态概览</span>
-              </div>
-              <div id="overview-counts" class="overview-grid"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Quick Actions</h3>
-                <span class="helper">快速进入主要流程</span>
-              </div>
-              <div class="quick-actions">
-                <button id="qa-new-session" type="button">新建 Session</button>
-                <button id="qa-import-material" type="button">导入资料</button>
-                <button id="qa-start-test" type="button">查看知识库</button>
-                <button id="qa-start-analysis" type="button">进入分析</button>
-              </div>
-            </section>
-          </div>
-
-          <div class="overview-bottom">
-            <section class="panel">
-              <div class="panel-head">
-                <h3>当前 Session</h3>
-                <span class="helper">Session 创建与编辑入口</span>
-              </div>
-              <div class="form-grid four">
-                <label>会话标题<input id="session-title" type="text" placeholder="例如 客户A 首轮联调"></label>
-                <label>客户名称<input id="session-customer" type="text" placeholder="例如 客户A"></label>
-                <label>设备型号<input id="device-model" type="text" placeholder="例如 ESP32-CAM"></label>
-                <label>序号<input id="serial-number" type="text" placeholder="例如 SN-2026-0001"></label>
-                <label>问题类型<input id="issue-type" type="text" placeholder="例如 UART / I2C / WIFI"></label>
-                <label>严重级别<select id="severity"><option value="P0">P0</option><option value="P1" selected>P1</option><option value="P2">P2</option><option value="P3">P3</option></select></label>
-                <label>当前阶段<select id="workflow-stage"><option value="phenomenon">现象</option><option value="layered_analysis">分层分析</option><option value="validation">验证方法</option><option value="root_cause">根因</option><option value="solution">解决方案</option><option value="lessons">经验总结</option></select></label>
-                <label>Owner<input id="owner" type="text" placeholder="例如 HW-A / FW-B"></label>
-              </div>
-              <label>问题现象<textarea id="session-symptom" rows="4" placeholder="描述实际问题、影响范围和触发条件"></textarea></label>
-              <div class="inline-actions">
-                <button id="create-session-btn" type="button">创建新会话</button>
-                <button id="save-session-meta-btn" type="button">保存当前会话</button>
-                <button id="delete-session-btn" type="button">删除当前会话</button>
-              </div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Recent Activity</h3>
-                <span class="helper">最近 Session / Test / Knowledge</span>
-              </div>
-              <div class="three-stacks">
-                <article class="stack-card">
-                  <h4>最近 Session</h4>
-                  <div id="recent-sessions" class="list-stack"></div>
-                </article>
-                <article class="stack-card">
-                  <h4>最近测试</h4>
-                  <div id="recent-tests" class="list-stack"></div>
-                </article>
-                <article class="stack-card">
-                  <h4>最近知识</h4>
-                  <div id="recent-knowledge" class="list-stack"></div>
-                </article>
-              </div>
-            </section>
-          </div>
-        </section>
-
-        <section id="view-test" class="view-page" hidden>
-          <div class="test-layout">
-            <section class="panel">
-              <div class="panel-head">
-                <h3>TestCase List</h3>
-                <span id="test-case-count" class="helper">0 条</span>
-              </div>
-              <div id="test-cases-list" class="list-stack"></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <h3>TestCase Editor</h3>
-                <span class="helper">测试定义</span>
-              </div>
-              <div class="form-grid two">
-                <label>Case Code<input id="test-case-code" type="text" placeholder="例如 UART_BOOT_OK"></label>
-                <label>Name<input id="test-case-name" type="text" placeholder="例如 Check boot banner"></label>
-                <label>Category<input id="test-case-category" type="text" placeholder="例如 UART / WIFI / POWER"></label>
-                <label>Target<input id="test-case-target" type="text" placeholder="例如 ESP32-CAM"></label>
-              </div>
-              <label>Steps(JSON)<textarea id="test-case-steps" rows="12" placeholder='[{"type":"serial_expect","pattern":"boot ok","timeout_ms":3000}]'></textarea></label>
-              <button id="save-test-case-btn" type="button">保存测试用例</button>
-              <p id="test-case-result" class="helper">执行时基于当前 Session 的证据和日志进行判定。</p>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <h3>Execution Panel</h3>
-                <span class="helper">设备选择与日志采集</span>
-              </div>
-              <div class="stack-card">
-                <p class="helper">当前执行目标：</p>
-                <p id="execution-target" class="strong-line">未选择 Session</p>
-                <button id="run-selected-test-btn" type="button">执行当前选中的 TestCase</button>
-              </div>
-              <details open class="subpanel">
-                <summary class="subsummary-head"><span>自动串口抓取</span></summary>
-                <div class="subdetails-body">
-                  <label>串口端口<div class="inline-actions split"><select id="serial-port-select"></select><button id="refresh-serial-ports-btn" type="button">刷新端口</button></div></label>
-                  <label>波特率<input id="serial-baud" type="number" value="115200" min="1200" step="1"></label>
-                  <div class="inline-actions"><button id="start-serial-capture-btn" type="button">开始抓取</button><button id="stop-serial-capture-btn" type="button">停止抓取</button></div>
-                  <p id="serial-capture-status" class="helper">未启动串口自动抓取。</p>
-                  <label>最新打印信息<textarea id="latest-serial-output" rows="10" class="serial-live-output" readonly placeholder="开始抓取后，这里显示最新输出"></textarea></label>
-                </div>
-              </details>
-              <details class="subpanel">
-                <summary class="subsummary-head"><span>手工粘贴串口日志</span></summary>
-                <div class="subdetails-body">
-                  <label>标题<input id="log-title" type="text" placeholder="例如 上电日志"></label>
-                  <label>日志内容<textarea id="log-content" rows="8" placeholder="把串口日志粘贴到这里"></textarea></label>
-                  <button id="save-log-btn" type="button">保存日志</button>
-                </div>
-              </details>
-              <details class="subpanel">
-                <summary class="subsummary-head"><span>导入串口文件</span></summary>
-                <div class="subdetails-body">
-                  <label>标题<input id="log-file-title" type="text" placeholder="例如 客户完整串口日志"></label>
-                  <label>日志文件<input id="log-file-input" type="file" accept=".log,.txt,.csv,.json,.md"></label>
-                  <button id="upload-log-file-btn" type="button">导入串口文件</button>
-                  <p id="log-file-result" class="helper">适合导入客户发来的文本日志。</p>
-                </div>
-              </details>
-            </section>
-          </div>
-
+        <section id="view-analysis" class="view-page active">
           <section class="panel">
             <div class="panel-head">
-              <h3>Test Results Table</h3>
-              <span id="test-run-count" class="helper">0 条</span>
+              <h3>当前会话</h3>
+              <span class="helper">会话管理和总览信息已并入分析页</span>
             </div>
-            <div class="table-wrap">
-              <table class="analysis-table">
-                <thead>
-                  <tr>
-                    <th>执行时间</th>
-                    <th>Case</th>
-                    <th>结果</th>
-                    <th>失败步骤</th>
-                    <th>设备型号</th>
-                    <th>序号</th>
-                    <th>生成 Session</th>
-                  </tr>
-                </thead>
-                <tbody id="test-runs-history"></tbody>
-              </table>
+            <div id="overview-counts" class="overview-grid"></div>
+            <div class="form-grid four">
+              <label>会话标题<input id="session-title" type="text" placeholder="例如 客户A 首轮联调"></label>
+              <label>客户名称<input id="session-customer" type="text" placeholder="例如 客户A"></label>
+              <label>设备型号<input id="device-model" type="text" placeholder="例如 ESP32-CAM"></label>
+              <label>序号<input id="serial-number" type="text" placeholder="例如 SN-2026-0001"></label>
+              <label>问题类型<input id="issue-type" type="text" placeholder="例如 UART / I2C / WIFI"></label>
+              <label>严重级别<select id="severity"><option value="P0">P0</option><option value="P1" selected>P1</option><option value="P2">P2</option><option value="P3">P3</option></select></label>
+              <label>当前阶段<select id="workflow-stage"><option value="phenomenon">现象</option><option value="layered_analysis">分层分析</option><option value="validation">验证方法</option><option value="root_cause">根因</option><option value="solution">解决方案</option><option value="lessons">经验总结</option></select></label>
+              <label>Owner<input id="owner" type="text" placeholder="例如 HW-A / FW-B"></label>
+            </div>
+            <label>问题现象<textarea id="session-symptom" rows="4" placeholder="描述实际问题、影响范围和触发条件"></textarea></label>
+            <div class="inline-actions">
+              <button id="create-session-btn" type="button">创建新会话</button>
+              <button id="save-session-meta-btn" type="button">保存当前会话</button>
+              <button id="delete-session-btn" type="button">删除当前会话</button>
+            </div>
+            <div class="subpanel-inline">
+              <div class="panel-head compact-head">
+                <h4>历史会话</h4>
+                <span class="helper" id="session-count">0 条</span>
+              </div>
+              <div id="session-list" class="list-stack compact-list"></div>
             </div>
           </section>
-        </section>
 
-        <section id="view-analysis" class="view-page">
           <section class="panel">
             <div class="panel-head">
               <h3>01. 资料导入与问题描述</h3>
@@ -259,88 +124,44 @@
               <div class="guide-step"><strong>Step 3</strong><span>让 AI 结合参考库生成分析与验证建议</span></div>
               <div class="guide-step"><strong>Step 4</strong><span>人工执行、修正并沉淀结论</span></div>
             </section>
-            <div class="grid-three">
-              <article class="stack-card">
-                <h4>A. 资料导入</h4>
-                <label>标题<input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述"></label>
-                <label>文件<input id="material-file" type="file"></label>
-                <button id="upload-material-btn" type="button">上传资料</button>
-                <p id="material-result" class="helper">支持 txt / md / log / json / csv / yaml / pdf，并显示导入文件名。</p>
-              </article>
+            <article class="stack-card">
+              <h4>A. 资料导入</h4>
+              <label>标题<input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述"></label>
+              <label>文件<input id="material-file" type="file"></label>
+              <button id="upload-material-btn" type="button">上传资料</button>
+              <p id="material-result" class="helper">支持 txt / md / log / json / csv / yaml / pdf，并显示导入文件名。</p>
+            </article>
 
-              <article class="stack-card">
-                <h4>B. 问题描述 / 测试报告 / 图片</h4>
-                <label>标题<input id="info-title" type="text" placeholder="例如 现场观察 / 测试报告 / 异常截图"></label>
-                <label>问题描述<textarea id="info-content" rows="6" placeholder="描述环境、复现步骤、异常现象，以及你当前最想定位的问题"></textarea></label>
-                <label>附件<input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
-                <button id="save-info-btn" type="button">导入问题信息</button>
-                <p id="info-result" class="helper">这里可导入测试报告、图片或补充问题说明。</p>
-              </article>
-
-              <article class="stack-card">
-                <h4>最近证据 / 抓拍</h4>
-                <label>设备 IP<input id="device-ip" type="text" placeholder="例如 192.168.2.116"></label>
-                <button id="capture-snapshot-btn" type="button">抓拍并保存</button>
-                <p id="snapshot-result" class="helper">未抓拍。</p>
-                <div class="recent-evidence">
-                  <h5>最近证据</h5>
-                  <div id="recent-evidence-list" class="evidence-chip-list"></div>
-                </div>
-              </article>
+            <div class="evidence-summary">
+              <span class="helper">已导入资料与附件</span>
+              <div id="evidence-inline-list" class="evidence-chip-list"></div>
             </div>
-            <label>本轮问题描述 / 分析目标<textarea id="analysis-request" rows="5" placeholder="例如：客户反馈设备偶发重启。请结合规格书、测试报告、图片和历史经验，按 01~06 的顺序分析并给出下一步验证动作。"></textarea></label>
+
+            <article class="stack-card">
+              <h4>B. 问题描述 / 测试报告 / 图片 / 日志</h4>
+              <label>标题<input id="info-title" type="text" placeholder="例如 现场观察 / 测试报告 / 异常截图 / 串口日志"></label>
+              <label>问题描述<textarea id="info-content" rows="6" placeholder="描述环境、复现步骤、异常现象，以及你当前最想定位的问题。这里也可以直接粘贴测试报告摘要或串口日志。"></textarea></label>
+              <label>附件<input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
+              <button id="save-info-btn" type="button">导入问题信息</button>
+              <p id="info-result" class="helper">这里可导入测试报告、图片、日志或补充问题说明。</p>
+            </article>
+
+            <label>本轮问题描述 / 分析目标<textarea id="analysis-request" rows="5" placeholder="例如：客户反馈设备偶发重启。请结合规格书、测试报告、图片、日志和历史经验，按 01~06 的顺序分析并给出下一步验证动作。"></textarea></label>
           </section>
 
           <section class="panel">
             <div class="panel-head">
-              <h3>02. AI 分析与参考库引导</h3>
-              <span class="helper">AI 会参考你导入的资料、当前证据、历史经验和测试库，先给分析与验证顺序</span>
+              <h3>02. AI 分析</h3>
+              <span class="helper">AI 会参考你导入的资料、当前证据和经验库，按 01~06 的顺序生成可编辑分析结果</span>
             </div>
-            <div id="analysis-playbook" class="guidance-card"></div>
-            <div id="analysis-library-preview" class="analysis-readable"></div>
-            <label class="checkbox-row"><input id="capture-before-analyze" type="checkbox"><span>分析前自动抓拍一张证据图</span></label>
             <div class="inline-actions">
               <button id="suggest-missing-btn" type="button">检测缺失信息</button>
-              <button id="suggest-tests-btn" type="button">推荐测试用例</button>
               <button id="analyze-btn" type="button">开始分析</button>
             </div>
+            <p id="analysis-status" class="helper">请先导入资料和问题信息，再开始分析。</p>
             <section class="steps-box">
-              <span class="role">ANALYSIS WORKFLOW</span>
+              <span class="role">分析流程</span>
               <div id="workflow-steps" class="workflow-steps workflow-inline"></div>
-            </section>
-            <section class="analysis-result-box">
-              <div class="panel-head">
-                <span class="role">AI Guidance</span>
-                <span class="helper">缺失信息 / 测试推荐 / 下一步动作 / 可视化分析</span>
-              </div>
-              <div id="analysis-guidance" class="analysis-readable"></div>
-            </section>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <h3>03. 人工修正与执行</h3>
-              <span class="helper">按照 AI 建议执行，再把人工判断、验证结果和修正内容写回</span>
-            </div>
-            <section class="subpanel flow-panel">
-              <div class="panel-head">
-                <h4>Workflow Navigation</h4>
-                <span class="helper">Step N 未完成前，禁止进入 N+1</span>
-              </div>
-              <div id="session-stage-nav" class="stage-nav"></div>
-            </section>
-            <section class="subpanel flow-panel">
-              <div class="panel-head">
-                <h4>人工修正 / 执行记录</h4>
-                <span id="step-form-title" class="helper">当前步骤数据</span>
-              </div>
-              <div id="stage-guidance" class="guidance-card"></div>
-              <div id="step-form-fields" class="step-form"></div>
-              <div class="inline-actions">
-                <button id="save-step-btn" type="button">保存当前步骤</button>
-                <button id="mark-step-done-btn" type="button">标记本步骤完成</button>
-              </div>
-              <p id="step-save-result" class="helper">这里用于人工修正 AI 结论、记录执行动作和回填结果。</p>
             </section>
           </section>
 
@@ -386,7 +207,7 @@
         <section id="view-library" class="view-page">
           <section class="panel">
             <div class="panel-head">
-              <h3>Knowledge Library</h3>
+              <h3>案例库</h3>
               <span class="helper">经验沉淀、搜索、筛选和复用</span>
             </div>
             <div class="inline-actions">
@@ -401,7 +222,7 @@
 
           <section class="panel">
             <div class="panel-head">
-              <h3>Detail Panel</h3>
+              <h3>详情</h3>
               <span class="helper">问题描述、根因、解决方案、验证方法、关联 TestCase</span>
             </div>
             <div id="knowledge-detail" class="analysis-readable"></div>

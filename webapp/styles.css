@@ -243,7 +243,6 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
 .analysis-layout,
 .form-grid.two,
 .form-grid.four,
-.summary-edit-grid,
 .quick-actions,
 .workflow-inline,
 .compare-grid {
@@ -306,21 +305,28 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
 .compact-row strong {
   display: inline;
   margin-bottom: 0;
+  flex: 0 1 auto;
 }
 
 .item-meta {
   color: var(--muted);
   font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
 }
 
 .evidence-chip-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.evidence-summary {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 18px;
 }
 
 .evidence-chip {
@@ -385,6 +391,22 @@ button:disabled { opacity: 0.65; cursor: default; transform: none; }
   border-radius: 18px;
   padding: 14px;
   background: var(--panel-soft);
+}
+
+.subpanel-inline {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.compact-head {
+  margin-bottom: 0;
+}
+
+.compact-list {
+  gap: 10px;
 }
 
 .strong-line {
