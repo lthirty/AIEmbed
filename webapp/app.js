@@ -103,6 +103,7 @@ const workflowTemplate = [
 ];
 
 let workflowState = [];
+const defaultAnalysisDimensions = ["硬件", "软件", "固件", "OS", "器件", "生产", "工艺"];
 
 function showGenericError(error) {
   console.error(error);
@@ -506,20 +507,29 @@ async function runAnalysis() {
   updateWorkflow("provider", "running", "正在校验当前 AI 设置...");
   try {
     updateWorkflow("session", "success", `已读取会话 ${state.activeSessionId}。`);
+    await validateSavedProvider();
+    if (!state.apiConfigured) throw new Error("当前 AI 设置校验未通过，请先修正。");
+    updateWorkflow("provider", "success", "AI 配置可用。");
+    updateWorkflow("request", "running", "正在向 AI 发送分析请求...");
     const data = await apiPost("/ai/analyze", {
       sessionId: state.activeSessionId,
       requestText: buildDefaultAnalysisPrompt(),
       deviceIp: state.activeSessionDetail?.deviceIp || "",
       captureSnapshot: false,
     });
-    updateWorkflow("provider", "success", "AI 配置可用。");
     updateWorkflow("request", "success", `请求已发送，请求ID：${data.requestId}`);
     updateWorkflow("response", "success", "结构化结果已解析并写入历史分析。");
     elements.analysisStatus.textContent = `分析完成，请求ID：${data.requestId}`;
     elements.analysisStatus.classList.remove("error");
     await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadKnowledge()]);
   } catch (error) {
-    updateWorkflow("request", "error", error.message || "分析请求失败");
+    const message = error?.message || "分析请求失败";
+    if (workflowState.find((item) => item.key === "provider")?.state === "running") {
+      updateWorkflow("provider", "error", message);
+      updateWorkflow("request", "pending", "等待开始");
+    } else {
+      updateWorkflow("request", "error", message);
+    }
     updateWorkflow("response", "error", "本轮未生成有效结构化结果。");
     throw error;
   }
@@ -557,20 +567,30 @@ function normalizeListItems(items, fallbackText = "") {
 
 function buildMergedRows(result) {
   const fromRows = Array.isArray(result.layered_validation_rows) ? result.layered_validation_rows : [];
-  if (fromRows.length) return fromRows;
+  if (fromRows.length) {
+    const normalized = [...fromRows];
+    const existing = new Set(normalized.map((row) => String(row?.category || "").trim()).filter(Boolean));
+    defaultAnalysisDimensions.forEach((category) => {
+      if (!existing.has(category)) {
+        normalized.push({ category, owner: "待定", reason: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果" });
+      }
+    });
+    return normalized;
+  }
   const layered = Array.isArray(result.layered_analysis) ? result.layered_analysis : [];
   const validations = Array.isArray(result.validation_steps) ? result.validation_steps : [];
-  const max = Math.max(layered.length, validations.length, 1);
+  const max = Math.max(layered.length, validations.length, defaultAnalysisDimensions.length);
   const rows = [];
   for (let index = 0; index < max; index += 1) {
     const layer = layered[index] || {};
     const validation = validations[index] || {};
+    const fallbackCategory = defaultAnalysisDimensions[index] || "";
     rows.push({
-      category: layer.layer || "",
+      category: layer.layer || fallbackCategory,
       owner: "",
-      reason: [layer.layer || "", layer.judgement || "", layer.why || ""].filter(Boolean).join("："),
-      method: validation.instructions || validation.goal || "",
-      result: validation.expected_result || "",
+      reason: [layer.judgement || "", layer.why || ""].filter(Boolean).join("：") || "暂无分析结果",
+      method: validation.instructions || validation.goal || "暂无分析结果",
+      result: validation.expected_result || "暂无分析结果",
     });
   }
   return rows;
@@ -925,7 +945,8 @@ function renderReadableAnalysis(analysis) {
   elements.analysisResult.innerHTML = "";
   state.latestAnalysis = analysis;
   if (!analysis || !analysis.result || typeof analysis.result !== "object") {
-    elements.analysisResult.innerHTML = '<p class="helper">当前还没有分析结果。完成资料导入后点击“开始分析”。</p>';
+    elements.analysisResult.innerHTML = '<p class="helper">当前还没有分析结果。完成资料导入后点击“开始分析”。下面先按默认维度列出分析表格。</p>';
+    elements.analysisResult.appendChild(createReadonlyMergedSection(buildMergedRows({ layered_validation_rows: [] })));
     return;
   }
   const result = analysis.result;

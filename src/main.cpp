@@ -20,6 +20,7 @@ namespace {
 // v0.20.0 - Project-side workbench adds stronger button feedback and removes mandatory input gating for section B; firmware behavior unchanged
 // v0.20.1 - Project-side workbench pins Awesome-Embedded in the library and adds a direct GitHub entry point; firmware behavior unchanged
 // v0.20.2 - Project-side workbench shows historical analyses in a modal and allows AI analysis when either issue description or serial log exists; firmware behavior unchanged
+// v0.20.3 - Project-side workbench fixes AI workflow state transitions and pre-renders the seven analysis dimensions in section C; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";
