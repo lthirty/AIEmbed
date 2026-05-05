@@ -106,6 +106,7 @@ const workflowTemplate = [
 let workflowState = [];
 const AUTO_SESSION_BOOTSTRAP_KEY = "ai-workbench-auto-session-v1";
 const defaultAnalysisDimensions = ["硬件", "软件", "固件", "OS", "器件", "生产", "工艺"];
+const hiddenCategoryOptions = new Set(["设计", "接口层", "驱动层", "系统层"]);
 const categoryAliasMap = {
   hardware: "硬件",
   hw: "硬件",
@@ -890,7 +891,8 @@ function createMergedSection(rows) {
     const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
     const categorySelect = document.createElement("select");
-    const availableCategories = [...new Set([...builtinCategories, ...buildMergedRows(state.latestAnalysis?.result || {}).map((item) => normalizeCategoryLabel(item.category)).filter(Boolean)])];
+    const availableCategories = [...new Set([...builtinCategories, ...buildMergedRows(state.latestAnalysis?.result || {}).map((item) => normalizeCategoryLabel(item.category)).filter(Boolean)])]
+      .filter((value) => !hiddenCategoryOptions.has(value));
     availableCategories.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
@@ -910,6 +912,10 @@ function createMergedSection(rows) {
         const customValue = window.prompt("输入自定义分类名称", row.category || "");
         if (customValue && customValue.trim()) {
           const nextValue = normalizeCategoryLabel(customValue.trim()) || customValue.trim();
+          if (hiddenCategoryOptions.has(nextValue)) {
+            categorySelect.value = row.category || "";
+            return;
+          }
           const option = document.createElement("option");
           option.value = nextValue;
           option.textContent = nextValue;

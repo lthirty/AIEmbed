@@ -1043,6 +1043,10 @@ button:disabled {
 
 .tag-chip {
   padding: 8px 14px;
+  color: var(--text);
+  font-weight: 700;
+  background: rgba(255, 252, 247, 0.96);
+  border: 1px solid rgba(75, 57, 29, 0.16);
   cursor: pointer;
   box-shadow: none;
 }

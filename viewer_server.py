@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.20.6"
+APP_VERSION = "v0.20.7"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
