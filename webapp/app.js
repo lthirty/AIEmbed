@@ -103,6 +103,7 @@ const workflowTemplate = [
 ];
 
 let workflowState = [];
+const AUTO_SESSION_BOOTSTRAP_KEY = "ai-workbench-auto-session-v1";
 const defaultAnalysisDimensions = ["硬件", "软件", "固件", "OS", "器件", "生产", "工艺"];
 
 function showGenericError(error) {
@@ -281,9 +282,10 @@ async function loadSessions() {
   }
 }
 
-async function createSession() {
+async function createSession(options = {}) {
+  const { title = "", silent = false } = options;
   const data = await apiPost("/api/sessions", {
-    title: elements.sessionTitle.value.trim() || "客户调试会话",
+    title: title || elements.sessionTitle.value.trim() || "客户调试会话",
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
     serialNumber: elements.serialNumber.value.trim(),
@@ -295,9 +297,20 @@ async function createSession() {
     deviceIp: state.activeSessionDetail?.deviceIp || "",
   });
   state.activeSessionId = data.session.id;
-  elements.analysisStatus.textContent = "会话已创建。";
-  elements.analysisStatus.classList.remove("error");
+  if (!silent) {
+    elements.analysisStatus.textContent = "会话已创建。";
+    elements.analysisStatus.classList.remove("error");
+  }
   await Promise.all([loadOverview(), loadSessions(), loadKnowledge()]);
+}
+
+async function ensureAutoSessionOnEntry() {
+  if (sessionStorage.getItem(AUTO_SESSION_BOOTSTRAP_KEY) === "1") return;
+  sessionStorage.setItem(AUTO_SESSION_BOOTSTRAP_KEY, "1");
+  const autoTitle = `新会话 ${new Date().toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")}`;
+  await createSession({ title: autoTitle, silent: true });
+  elements.analysisStatus.textContent = `已自动新建会话：${autoTitle}`;
+  elements.analysisStatus.classList.remove("error");
 }
 
 async function saveSessionMeta() {
@@ -531,6 +544,7 @@ async function runAnalysis() {
       updateWorkflow("request", "error", message);
     }
     updateWorkflow("response", "error", "本轮未生成有效结构化结果。");
+    renderReadableAnalysis(null);
     throw error;
   }
 }
@@ -575,7 +589,16 @@ function buildMergedRows(result) {
         normalized.push({ category, owner: "待定", reason: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果" });
       }
     });
-    return normalized;
+    const ordered = [];
+    const extras = [];
+    defaultAnalysisDimensions.forEach((category) => {
+      const found = normalized.find((row) => String(row?.category || "").trim() === category);
+      if (found) ordered.push(found);
+    });
+    normalized.forEach((row) => {
+      if (!defaultAnalysisDimensions.includes(String(row?.category || "").trim())) extras.push(row);
+    });
+    return [...ordered, ...extras];
   }
   const layered = Array.isArray(result.layered_analysis) ? result.layered_analysis : [];
   const validations = Array.isArray(result.validation_steps) ? result.validation_steps : [];
@@ -941,12 +964,57 @@ function collectMergedRows() {
     .filter((row) => Object.values(row).some(Boolean));
 }
 
+function createBlankSimpleSection(order, title, minRows = 2) {
+  const section = document.createElement("section");
+  section.className = "editable-analysis-section";
+  const header = document.createElement("div");
+  header.className = "section-header";
+  header.innerHTML = `<h4>${order} ${title}</h4>`;
+  section.appendChild(header);
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "simple-analysis-table-wrap";
+  const table = document.createElement("table");
+  table.className = "simple-analysis-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>序号</th>
+        <th>内容</th>
+      </tr>
+    </thead>
+  `;
+  const body = document.createElement("tbody");
+  for (let index = 0; index < minRows; index += 1) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="simple-analysis-index">${index + 1}</td>
+      <td class="readonly-cell"></td>
+    `;
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  tableWrap.appendChild(table);
+  section.appendChild(tableWrap);
+  return section;
+}
+
 function renderReadableAnalysis(analysis) {
   elements.analysisResult.innerHTML = "";
   state.latestAnalysis = analysis;
   if (!analysis || !analysis.result || typeof analysis.result !== "object") {
-    elements.analysisResult.innerHTML = '<p class="helper">当前还没有分析结果。完成资料导入后点击“开始分析”。下面先按默认维度列出分析表格。</p>';
+    const summaryGrid = document.createElement("div");
+    summaryGrid.className = "summary-edit-grid";
+    summaryGrid.appendChild(createSummaryField("测试时间", "summary-test-time", ""));
+    summaryGrid.appendChild(createSummaryField("设备型号", "summary-device-model", ""));
+    summaryGrid.appendChild(createSummaryField("序号", "summary-serial-number", ""));
+    summaryGrid.appendChild(createSummaryField("优先级", "summary-priority", "", "select", ["", "P0", "P1", "P2", "P3"]));
+    summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", "", "select", ["", "low", "medium", "high", "critical"]));
+    elements.analysisResult.appendChild(summaryGrid);
+    elements.analysisResult.appendChild(createBlankSimpleSection("01", "现象"));
     elements.analysisResult.appendChild(createReadonlyMergedSection(buildMergedRows({ layered_validation_rows: [] })));
+    elements.analysisResult.appendChild(createBlankSimpleSection("04", "根因", 1));
+    elements.analysisResult.appendChild(createBlankSimpleSection("05", "解决方案", 1));
+    elements.analysisResult.appendChild(createBlankSimpleSection("06", "经验总结", 1));
     return;
   }
   const result = analysis.result;
@@ -1456,4 +1524,6 @@ enhanceCollapsibleSections();
 resetWorkflow();
 setCurrentView("analysis");
 ensureSerialPolling();
-Promise.all([loadConfig(), loadOverview(), loadSessions(), loadKnowledge(), loadSerialPorts(), pollSerialStatus()]).catch(showGenericError);
+Promise.all([loadConfig(), loadOverview(), loadSessions(), loadKnowledge(), loadSerialPorts(), pollSerialStatus()])
+  .then(() => ensureAutoSessionOnEntry())
+  .catch(showGenericError);

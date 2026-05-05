@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.20.3"
+APP_VERSION = "v0.20.4"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1290,7 +1290,17 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
         if not row.get("result"):
             row["result"] = "暂无分析结果"
 
-    result_json["layered_validation_rows"] = normalized_rows
+    ordered_rows: list[dict] = []
+    extra_rows: list[dict] = []
+    category_map = {row["category"]: row for row in normalized_rows}
+    for category in DEFAULT_ANALYSIS_DIMENSIONS:
+        if category in category_map:
+            ordered_rows.append(category_map[category])
+    for row in normalized_rows:
+        if row["category"] not in DEFAULT_ANALYSIS_DIMENSIONS:
+            extra_rows.append(row)
+
+    result_json["layered_validation_rows"] = ordered_rows + extra_rows
     return result_json
 
 
