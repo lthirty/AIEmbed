@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.20.1"
+APP_VERSION = "v0.20.2"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1217,12 +1217,10 @@ def suggest_test_cases_for_session(session_payload: dict) -> list[dict]:
 def detect_missing_info_for_session(session_payload: dict) -> list[str]:
     missing = []
     evidence = session_payload.get("evidence", [])
-    if not any(item.get("kind") == "imported_info" for item in evidence):
-        missing.append("B. 问题描述 / 测试报告 / 图片 / 日志 栏还没有任何内容，请至少补充一项后再分析。")
-    if not any(item.get("kind") == "serial_log" for item in evidence):
-        missing.append("当前没有串口日志，建议先抓一段完整 log。")
-    if not any(item.get("kind") in {"material", "imported_info"} for item in evidence):
-        missing.append("当前没有客户资料或导入信息，建议至少补一份问题说明。")
+    has_problem_description = any(item.get("kind") == "imported_info" for item in evidence)
+    has_serial_log = any(item.get("kind") == "serial_log" for item in evidence)
+    if not (has_problem_description or has_serial_log):
+        missing.append("请至少补充一段问题描述或一段串口 log 后再分析。")
     return missing
 
 
@@ -1978,6 +1976,8 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "根因、解决方案、经验总结必须先留空，等待人工验证后再填写。"
         "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
         "合并列表中的每一条请显式给出 category、owner、reason、method、result 五个字段。"
+        "请优先从多个维度进行可能性分析，至少覆盖：硬件、软件、固件、OS、器件、生产、工艺。"
+        "如果某个维度暂时没有足够结论，也必须在对应条目里写“暂无分析结果”。"
         "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
         "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
@@ -2090,6 +2090,7 @@ def run_session_analysis(session_id: str, request_text: str, device_ip: str, cap
     )
     raw_text = call_provider_text(prompt, load_provider_config(), request_id)
     result_json = try_parse_analysis_json(raw_text)
+    result_json = normalize_layered_validation_rows(result_json)
     add_log("info", "analysis", "Structured analysis JSON parsed", {"keys": list(result_json.keys())}, request_id)
     return store_analysis(session_id, request_text, result_json, raw_text)
 

@@ -241,6 +241,37 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(32, 24, 16, 0.45);
+}
+
+.modal-card {
+  width: min(1200px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.readonly-cell {
+  white-space: pre-wrap;
+  vertical-align: top;
+}
+
 .grid-two,
 .grid-three,
 .test-layout,

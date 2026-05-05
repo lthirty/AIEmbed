@@ -54,6 +54,10 @@ const elements = {
   analysisHistory: document.getElementById("analysis-history"),
   compareSelectedBtn: document.getElementById("compare-selected-btn"),
   analysisCompare: document.getElementById("analysis-compare"),
+  analysisHistoryModal: document.getElementById("analysis-history-modal"),
+  analysisHistoryModalTitle: document.getElementById("analysis-history-modal-title"),
+  analysisHistoryModalBody: document.getElementById("analysis-history-modal-body"),
+  closeAnalysisHistoryModalBtn: document.getElementById("close-analysis-history-modal-btn"),
   knowledgeSearch: document.getElementById("knowledge-search"),
   searchKnowledgeBtn: document.getElementById("search-knowledge-btn"),
   createKnowledgeBtn: document.getElementById("create-knowledge-btn"),
@@ -1175,14 +1179,13 @@ function renderAnalyses(analyses) {
     const deleteBtn = row.querySelector('[data-action="delete"]');
     editBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      renderReadableAnalysis(analysis);
-      elements.analysisResult.scrollIntoView({ behavior: "smooth", block: "start" });
+      openAnalysisHistoryModal(analysis);
     });
     deleteBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       deleteAnalysis(analysis.id).catch(showGenericError);
     });
-    row.addEventListener("click", () => renderReadableAnalysis(analysis));
+    row.addEventListener("click", () => openAnalysisHistoryModal(analysis));
     const checkbox = row.querySelector("input[type='checkbox']");
     checkbox.checked = state.selectedCompareIds.includes(analysis.id);
     checkbox.addEventListener("click", (event) => event.stopPropagation());
@@ -1205,6 +1208,89 @@ function compareSelectedAnalyses() {
     return;
   }
   elements.analysisCompare.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function createReadonlyMergedSection(rows) {
+  const section = document.createElement("section");
+  section.className = "editable-analysis-section";
+  const header = document.createElement("div");
+  header.className = "section-header";
+  header.innerHTML = "<h4>02-03 分层分析与验证方法</h4>";
+  section.appendChild(header);
+
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "merged-analysis-table-wrap";
+  applyMergedColumnWidths(tableWrap);
+  const table = document.createElement("table");
+  table.className = "merged-analysis-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>分类</th>
+        <th>责任人</th>
+        <th>原因分析</th>
+        <th>验证方法</th>
+        <th>验证结果</th>
+      </tr>
+    </thead>
+  `;
+  const tbody = document.createElement("tbody");
+  (rows || []).forEach((row) => {
+    const tr = document.createElement("tr");
+    ["category", "owner", "reason", "method", "result"].forEach((field) => {
+      const td = document.createElement("td");
+      td.className = "merged-analysis-cell readonly-cell";
+      td.textContent = row?.[field] || "";
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  section.appendChild(tableWrap);
+  return section;
+}
+
+function buildHistoryAnalysisModalContent(analysis) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "analysis-readable";
+  if (!analysis?.result) {
+    wrapper.innerHTML = '<p class="helper">没有可展示的分析内容。</p>';
+    return wrapper;
+  }
+  const result = analysis.result;
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "summary-edit-grid";
+  [
+    ["测试时间", result.test_time || analysis.createdAt || ""],
+    ["设备型号", result.device_model || ""],
+    ["序号", result.serial_number || ""],
+    ["优先级", result.priority || "P1"],
+    ["风险等级", result.risk_level || "low"],
+  ].forEach(([label, value]) => {
+    const card = document.createElement("div");
+    card.className = "summary-edit-card";
+    card.innerHTML = `<span class="summary-label">${label}</span><div>${value}</div>`;
+    summaryGrid.appendChild(card);
+  });
+  wrapper.appendChild(summaryGrid);
+  wrapper.appendChild(createListSection("01 现象", normalizeListItems(result.phenomenon_items, result.phenomenon_summary || "")));
+  wrapper.appendChild(createReadonlyMergedSection(buildMergedRows(result)));
+  wrapper.appendChild(createListSection("04 根因", normalizeListItems(result.root_cause_items, result.root_cause_summary || "")));
+  wrapper.appendChild(createListSection("05 解决方案", normalizeListItems(result.solution_items, result.solution_summary || "")));
+  wrapper.appendChild(createListSection("06 经验总结", normalizeListItems(result.lessons_items, result.lessons_summary || "")));
+  return wrapper;
+}
+
+function openAnalysisHistoryModal(analysis) {
+  elements.analysisHistoryModalTitle.textContent = `历史分析详情 · ${analysis.createdAt || ""}`;
+  elements.analysisHistoryModalBody.innerHTML = "";
+  elements.analysisHistoryModalBody.appendChild(buildHistoryAnalysisModalContent(analysis));
+  elements.analysisHistoryModal.classList.remove("hidden");
+}
+
+function closeAnalysisHistoryModal() {
+  elements.analysisHistoryModal.classList.add("hidden");
 }
 
 async function loadKnowledge(keyword = "") {
@@ -1333,6 +1419,15 @@ function bindEvents() {
   elements.refreshSerialPortsBtn.addEventListener("click", () => loadSerialPorts().catch(showGenericError));
   elements.startSerialCaptureBtn.addEventListener("click", () => startSerialCapture().catch(showGenericError));
   elements.stopSerialCaptureBtn.addEventListener("click", () => stopSerialCapture().catch(showGenericError));
+  elements.closeAnalysisHistoryModalBtn.addEventListener("click", closeAnalysisHistoryModal);
+  elements.analysisHistoryModal.addEventListener("click", (event) => {
+    if (event.target === elements.analysisHistoryModal) closeAnalysisHistoryModal();
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !elements.analysisHistoryModal.classList.contains("hidden")) {
+      closeAnalysisHistoryModal();
+    }
+  });
 }
 
 bindEvents();
