@@ -25,6 +25,7 @@ namespace {
 // v0.20.5 - Project-side workbench adds basis column, row ordering, grouped Chinese categories, and explicit evidence-source gating for AI analysis; firmware behavior unchanged
 // v0.20.6 - Project-side workbench raises AI provider timeout to 180 seconds for long structured analyses; firmware behavior unchanged
 // v0.20.7 - Project-side workbench fixes library tag button contrast and removes legacy layered category options from the classification dropdown; firmware behavior unchanged
+// v0.20.8 - Project-side workbench reduces list-section content fields to single-line height by default and constrains the knowledge list to a 3-item scroll window; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

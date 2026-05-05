@@ -758,7 +758,7 @@ function createEditableListSection(order, title, key, items, minRows = 2) {
     tr.appendChild(indexCell);
     const contentCell = document.createElement("td");
     const textarea = document.createElement("textarea");
-    textarea.rows = 3;
+    textarea.rows = 1;
     textarea.value = value || "";
     textarea.dataset.listKey = key;
     textarea.dataset.listIndex = String(index);

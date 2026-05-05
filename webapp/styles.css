@@ -808,9 +808,16 @@ button:disabled {
 }
 
 .simple-analysis-textarea {
-  min-height: 72px;
+  min-height: 42px;
+  line-height: 1.5;
   margin-top: 0;
   border-radius: 10px;
+}
+
+#knowledge-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .secondary-button {
