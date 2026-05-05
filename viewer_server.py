@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.21.0"
+APP_VERSION = "v0.22.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -135,12 +135,23 @@ def init_storage() -> None:
             CREATE TABLE IF NOT EXISTS knowledge (
                 id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL DEFAULT '',
+                case_code TEXT NOT NULL DEFAULT '',
                 title TEXT NOT NULL,
+                source_type TEXT NOT NULL DEFAULT 'manual',
+                issue_type TEXT NOT NULL DEFAULT '',
+                fault_type TEXT NOT NULL DEFAULT '',
+                layer_hint TEXT NOT NULL DEFAULT '',
+                symptom TEXT NOT NULL DEFAULT '',
                 root_cause TEXT NOT NULL DEFAULT '',
                 solution TEXT NOT NULL DEFAULT '',
                 validation TEXT NOT NULL DEFAULT '',
+                quick_checks_json TEXT NOT NULL DEFAULT '[]',
                 related_cases_json TEXT NOT NULL DEFAULT '[]',
+                references_json TEXT NOT NULL DEFAULT '[]',
                 tags_json TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'draft',
+                source_title TEXT NOT NULL DEFAULT '',
+                source_url TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -190,6 +201,29 @@ def init_storage() -> None:
             conn.execute("ALTER TABLE sessions ADD COLUMN symptom TEXT NOT NULL DEFAULT ''")
         if "owner" not in existing_columns:
             conn.execute("ALTER TABLE sessions ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
+        knowledge_columns = {row[1] for row in conn.execute("PRAGMA table_info(knowledge)").fetchall()}
+        if "case_code" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN case_code TEXT NOT NULL DEFAULT ''")
+        if "source_type" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN source_type TEXT NOT NULL DEFAULT 'manual'")
+        if "issue_type" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN issue_type TEXT NOT NULL DEFAULT ''")
+        if "fault_type" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN fault_type TEXT NOT NULL DEFAULT ''")
+        if "layer_hint" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN layer_hint TEXT NOT NULL DEFAULT ''")
+        if "symptom" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN symptom TEXT NOT NULL DEFAULT ''")
+        if "quick_checks_json" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN quick_checks_json TEXT NOT NULL DEFAULT '[]'")
+        if "references_json" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN references_json TEXT NOT NULL DEFAULT '[]'")
+        if "status" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'")
+        if "source_title" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN source_title TEXT NOT NULL DEFAULT ''")
+        if "source_url" not in knowledge_columns:
+            conn.execute("ALTER TABLE knowledge ADD COLUMN source_url TEXT NOT NULL DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -522,12 +556,23 @@ def knowledge_to_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
         "sessionId": row["session_id"],
+        "caseCode": row["case_code"],
         "title": row["title"],
+        "sourceType": row["source_type"],
+        "issueType": row["issue_type"],
+        "faultType": row["fault_type"],
+        "layerHint": row["layer_hint"],
+        "symptom": row["symptom"],
         "rootCause": row["root_cause"],
         "solution": row["solution"],
         "validation": row["validation"],
+        "quickChecks": json.loads(row["quick_checks_json"] or "[]"),
         "relatedCases": json.loads(row["related_cases_json"] or "[]"),
+        "references": json.loads(row["references_json"] or "[]"),
         "tags": json.loads(row["tags_json"] or "[]"),
+        "status": row["status"],
+        "sourceTitle": row["source_title"],
+        "sourceUrl": row["source_url"],
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
@@ -875,14 +920,156 @@ def list_knowledge(search_text: str = "") -> list[dict]:
             rows = conn.execute(
                 """
                 SELECT * FROM knowledge
-                WHERE title LIKE ? OR root_cause LIKE ? OR solution LIKE ? OR validation LIKE ?
+                WHERE title LIKE ? OR case_code LIKE ? OR source_type LIKE ? OR issue_type LIKE ? OR fault_type LIKE ?
+                  OR layer_hint LIKE ? OR symptom LIKE ? OR root_cause LIKE ? OR solution LIKE ? OR validation LIKE ?
+                  OR tags_json LIKE ? OR source_title LIKE ? OR source_url LIKE ?
                 ORDER BY updated_at DESC, created_at DESC
                 """,
-                (like, like, like, like),
+                (like, like, like, like, like, like, like, like, like, like, like, like, like),
             ).fetchall()
         else:
             rows = conn.execute("SELECT * FROM knowledge ORDER BY updated_at DESC, created_at DESC").fetchall()
         return [knowledge_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def unique_text_list(values) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in values or []:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def normalize_reference_entries(values) -> list[dict]:
+    normalized: list[dict] = []
+    for item in values or []:
+        if isinstance(item, dict):
+            label = str(item.get("label") or "").strip()
+            url = str(item.get("url") or "").strip()
+            value = str(item.get("value") or "").strip()
+            if label or url or value:
+                normalized.append({"label": label, "url": url, "value": value})
+            continue
+        text = str(item or "").strip()
+        if text:
+            normalized.append({"label": text, "url": "", "value": ""})
+    return normalized
+
+
+def next_case_code(prefix: str = "CASE") -> str:
+    return f"{prefix}-{time.strftime('%Y%m%d')}-{uuid4().hex[:4].upper()}"
+
+
+def normalize_knowledge_payload(payload: dict, default_source_type: str = "manual") -> dict:
+    source_type = str(payload.get("sourceType", default_source_type) or default_source_type).strip() or default_source_type
+    tags = payload.get("tags", [])
+    if isinstance(tags, str):
+        tags = re.split(r"[,，\n]+", tags)
+    quick_checks = payload.get("quickChecks", [])
+    if isinstance(quick_checks, str):
+        quick_checks = re.split(r"\n+", quick_checks)
+    related_cases = payload.get("relatedCases", [])
+    references = payload.get("references", [])
+    if isinstance(references, str):
+        references = [{"label": part.strip(), "url": "", "value": ""} for part in re.split(r"\n+", references) if part.strip()]
+    source_url = str(payload.get("sourceUrl", "")).strip()
+    source_title = str(payload.get("sourceTitle", "")).strip()
+    normalized = {
+        "id": str(payload.get("id", "")).strip(),
+        "sessionId": str(payload.get("sessionId", "")).strip(),
+        "caseCode": str(payload.get("caseCode", "")).strip() or next_case_code("CASE"),
+        "title": str(payload.get("title", "")).strip() or "未命名案例",
+        "sourceType": source_type,
+        "issueType": str(payload.get("issueType", "")).strip(),
+        "faultType": str(payload.get("faultType", "")).strip(),
+        "layerHint": str(payload.get("layerHint", "")).strip(),
+        "symptom": str(payload.get("symptom", "")).strip(),
+        "rootCause": str(payload.get("rootCause", "")).strip(),
+        "solution": str(payload.get("solution", "")).strip(),
+        "validation": str(payload.get("validation", "")).strip(),
+        "quickChecks": unique_text_list(quick_checks),
+        "relatedCases": normalize_reference_entries(related_cases),
+        "references": normalize_reference_entries(references),
+        "tags": unique_text_list(tags),
+        "status": str(payload.get("status", "draft")).strip() or "draft",
+        "sourceTitle": source_title,
+        "sourceUrl": source_url,
+    }
+    if source_url and not any(ref.get("url") == source_url for ref in normalized["references"]):
+        normalized["references"].append({"label": source_title or "来源链接", "url": source_url, "value": ""})
+    return normalized
+
+
+def upsert_knowledge_entry(payload: dict, default_source_type: str = "manual") -> dict:
+    normalized = normalize_knowledge_payload(payload, default_source_type)
+    now = now_ts()
+    knowledge_id = normalized["id"] or uuid4().hex
+    conn = get_conn()
+    try:
+        existing = conn.execute("SELECT id FROM knowledge WHERE id = ?", (knowledge_id,)).fetchone()
+        params = (
+            normalized["sessionId"],
+            normalized["caseCode"],
+            normalized["title"],
+            normalized["sourceType"],
+            normalized["issueType"],
+            normalized["faultType"],
+            normalized["layerHint"],
+            normalized["symptom"],
+            normalized["rootCause"],
+            normalized["solution"],
+            normalized["validation"],
+            json.dumps(normalized["quickChecks"], ensure_ascii=False),
+            json.dumps(normalized["relatedCases"], ensure_ascii=False),
+            json.dumps(normalized["references"], ensure_ascii=False),
+            json.dumps(normalized["tags"], ensure_ascii=False),
+            normalized["status"],
+            normalized["sourceTitle"],
+            normalized["sourceUrl"],
+        )
+        if existing:
+            conn.execute(
+                """
+                UPDATE knowledge
+                SET session_id = ?, case_code = ?, title = ?, source_type = ?, issue_type = ?, fault_type = ?,
+                    layer_hint = ?, symptom = ?, root_cause = ?, solution = ?, validation = ?, quick_checks_json = ?,
+                    related_cases_json = ?, references_json = ?, tags_json = ?, status = ?, source_title = ?, source_url = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (*params, now, knowledge_id),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO knowledge (
+                    id, session_id, case_code, title, source_type, issue_type, fault_type, layer_hint, symptom,
+                    root_cause, solution, validation, quick_checks_json, related_cases_json, references_json,
+                    tags_json, status, source_title, source_url, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (knowledge_id, *params, now, now),
+            )
+        conn.commit()
+        row = conn.execute("SELECT * FROM knowledge WHERE id = ?", (knowledge_id,)).fetchone()
+        return knowledge_to_dict(row)
+    finally:
+        conn.close()
+
+
+def delete_knowledge(knowledge_id: str) -> None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT 1 FROM knowledge WHERE id = ?", (knowledge_id,)).fetchone()
+        if not row:
+            raise KeyError("knowledge not found")
+        conn.execute("DELETE FROM knowledge WHERE id = ?", (knowledge_id,))
+        conn.commit()
     finally:
         conn.close()
 
@@ -963,68 +1150,68 @@ def create_knowledge_from_payload(
     related_cases: list,
     tags: list,
 ) -> dict:
-    now = now_ts()
-    knowledge_id = uuid4().hex
-    conn = get_conn()
-    try:
-        conn.execute(
-            """
-            INSERT INTO knowledge (id, session_id, title, root_cause, solution, validation, related_cases_json, tags_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                knowledge_id,
-                session_id,
-                title.strip() or "未命名知识条目",
-                root_cause.strip(),
-                solution.strip(),
-                validation.strip(),
-                json.dumps(related_cases or [], ensure_ascii=False),
-                json.dumps(tags or [], ensure_ascii=False),
-                now,
-                now,
-            ),
-        )
-        conn.commit()
-        row = conn.execute("SELECT * FROM knowledge WHERE id = ?", (knowledge_id,)).fetchone()
-        return knowledge_to_dict(row)
-    finally:
-        conn.close()
+    return upsert_knowledge_entry(
+        {
+            "sessionId": session_id,
+            "title": title.strip() or "未命名知识条目",
+            "rootCause": root_cause.strip(),
+            "solution": solution.strip(),
+            "validation": validation.strip(),
+            "relatedCases": related_cases or [],
+            "tags": tags or [],
+        },
+        default_source_type="session",
+    )
 
 
 def ensure_default_library_entries() -> None:
     title = "Awesome-Embedded 外部案例资源库"
+    existing_id = ""
     conn = get_conn()
     try:
         exists = conn.execute("SELECT id FROM knowledge WHERE title = ?", (title,)).fetchone()
         if exists:
-            return
+            existing_id = exists["id"]
     finally:
         conn.close()
 
-    create_knowledge_from_payload(
-        session_id="",
-        title=title,
-        root_cause=(
-            "这是一个面向嵌入式开发者的外部精选资源库，适合作为案例库里的通用参考入口。"
-            "当用户遇到某类问题但本地知识库还不完善时，可以先从这个资源库里查找相关方向的资料、课程、驱动、工具链和调试经验。"
-        ),
-        solution=(
-            "适用方式：\n"
-            "1. 先在当前 Session 明确问题类型，例如 UART / I2C / WIFI / Bootloader / RTOS。\n"
-            "2. 再去这个外部资源库里按主题查找对应的资料。\n"
-            "3. 将找到的参考资料继续导入本系统，作为当前分析的补充依据。\n"
-            "4. 如果外部资料帮助定位了问题，再把结论沉淀回本地 Knowledge Library。"
-        ),
-        validation=(
-            "这个资源库覆盖了 Embedded Software Skill、MCU programming、Linux Kernel and device driver development、RTOS、"
-            "Peripheral、Machine Learning & AI on MCU、Tips & tricks 等方向，适合在缺少内部案例时作为外部参考库。"
-        ),
-        related_cases=[
-            {"label": "GitHub 项目", "url": "https://github.com/nhivp/Awesome-Embedded"},
-            {"label": "资源定位建议", "value": "先按问题类型筛选，再把命中的资料导入当前 Session"},
-        ],
-        tags=["外部资源", "参考库", "Embedded", "案例扩展", "Awesome-Embedded"],
+    upsert_knowledge_entry(
+        {
+            "id": existing_id,
+            "title": title,
+            "caseCode": "REF-AWESOME-EMBEDDED",
+            "sourceType": "external_reference",
+            "issueType": "通用",
+            "faultType": "外部参考库",
+            "layerHint": "硬件→接口→驱动→系统→应用",
+            "symptom": "当本地案例库缺少相似问题时，可先从外部嵌入式资源库扩展参考面。",
+            "rootCause": (
+                "这是一个面向嵌入式开发者的外部精选资源库，适合作为案例库里的通用参考入口。"
+                "当用户遇到某类问题但本地知识库还不完善时，可以先从这个资源库里查找相关方向的资料、课程、驱动、工具链和调试经验。"
+            ),
+            "solution": (
+                "适用方式：\n"
+                "1. 先在当前 Session 明确问题类型，例如 UART / I2C / WIFI / Bootloader / RTOS。\n"
+                "2. 再去这个外部资源库里按主题查找对应的资料。\n"
+                "3. 将找到的参考资料继续导入本系统，作为当前分析的补充依据。\n"
+                "4. 如果外部资料帮助定位了问题，再把结论沉淀回本地 Knowledge Library。"
+            ),
+            "validation": (
+                "这个资源库覆盖了 Embedded Software Skill、MCU programming、Linux Kernel and device driver development、RTOS、"
+                "Peripheral、Machine Learning & AI on MCU、Tips & tricks 等方向，适合在缺少内部案例时作为外部参考库。"
+            ),
+            "quickChecks": ["先按问题类型筛选主题，再把命中的资料导入当前 Session。"],
+            "relatedCases": [
+                {"label": "GitHub 项目", "url": "https://github.com/nhivp/Awesome-Embedded"},
+                {"label": "资源定位建议", "value": "先按问题类型筛选，再把命中的资料导入当前 Session"},
+            ],
+            "references": [{"label": "Awesome-Embedded", "url": "https://github.com/nhivp/Awesome-Embedded", "value": "外部参考库"}],
+            "tags": ["外部资源", "参考库", "Embedded", "案例扩展", "Awesome-Embedded"],
+            "status": "published",
+            "sourceTitle": "Awesome-Embedded",
+            "sourceUrl": "https://github.com/nhivp/Awesome-Embedded",
+        },
+        default_source_type="external_reference",
     )
 
 
@@ -1034,7 +1221,7 @@ def create_knowledge_from_session(session_id: str, payload: dict | None = None) 
     analysis_result = latest_analysis.get("result") or {}
     request_title = (payload or {}).get("title") if payload else ""
     title = str(request_title or session_data.get("title") or "未命名知识条目").strip()
-    root_cause = str((payload or {}).get("rootCause") or analysis_result.get("phenomenon_summary") or "").strip()
+    root_cause = str((payload or {}).get("rootCause") or analysis_result.get("root_cause_summary") or analysis_result.get("phenomenon_summary") or "").strip()
     solution = str((payload or {}).get("solution") or "\n".join(
         [item.get("instructions", "") for item in analysis_result.get("validation_steps", [])[:3] if isinstance(item, dict)]
     )).strip()
@@ -1043,14 +1230,36 @@ def create_knowledge_from_session(session_id: str, payload: dict | None = None) 
     )).strip()
     related_cases = (payload or {}).get("relatedCases") or (analysis_result.get("related_assets") or {}).get("recommended_test_cases") or []
     tags = (payload or {}).get("tags") or (analysis_result.get("case_update_hint") or {}).get("candidate_root_cause_tags") or []
-    return create_knowledge_from_payload(
-        session_id=session_id,
-        title=title,
-        root_cause=root_cause,
-        solution=solution,
-        validation=validation,
-        related_cases=related_cases if isinstance(related_cases, list) else [str(related_cases)],
-        tags=tags if isinstance(tags, list) else [str(tags)],
+    quick_checks = (payload or {}).get("quickChecks") or [
+        item.get("action", "") for item in analysis_result.get("guidance_checklist", [])[:5] if isinstance(item, dict)
+    ]
+    references = (payload or {}).get("references") or [
+        {"label": entry.get("evidence_title", ""), "value": entry.get("kind", ""), "url": ""}
+        for entry in analysis_result.get("evidence_used", [])
+        if isinstance(entry, dict) and (entry.get("evidence_title") or entry.get("kind"))
+    ]
+    return upsert_knowledge_entry(
+        {
+            "sessionId": session_id,
+            "caseCode": (payload or {}).get("caseCode", ""),
+            "title": title,
+            "sourceType": (payload or {}).get("sourceType", "session"),
+            "issueType": (payload or {}).get("issueType", session_data.get("issueType", "")),
+            "faultType": (payload or {}).get("faultType", ""),
+            "layerHint": (payload or {}).get("layerHint", "硬件→接口→驱动→系统→应用"),
+            "symptom": (payload or {}).get("symptom", analysis_result.get("phenomenon_summary", "")),
+            "rootCause": root_cause,
+            "solution": solution,
+            "validation": validation,
+            "quickChecks": quick_checks if isinstance(quick_checks, list) else [str(quick_checks)],
+            "relatedCases": related_cases if isinstance(related_cases, list) else [str(related_cases)],
+            "references": references if isinstance(references, list) else [references],
+            "tags": tags if isinstance(tags, list) else [str(tags)],
+            "status": (payload or {}).get("status", "draft"),
+            "sourceTitle": (payload or {}).get("sourceTitle", ""),
+            "sourceUrl": (payload or {}).get("sourceUrl", ""),
+        },
+        default_source_type="session",
     )
 
 
@@ -1963,10 +2172,29 @@ def summarize_library_context(session_payload: dict) -> dict:
                 "target": item.get("target", ""),
             }
         )
+    knowledge_entries = []
+    for item in library_context.get("knowledge", [])[:8]:
+        knowledge_entries.append(
+            {
+                "caseCode": item.get("caseCode", ""),
+                "title": item.get("title", ""),
+                "sourceType": item.get("sourceType", ""),
+                "issueType": item.get("issueType", ""),
+                "faultType": item.get("faultType", ""),
+                "layerHint": item.get("layerHint", ""),
+                "symptom": trim_text(item.get("symptom", ""), 160),
+                "rootCause": trim_text(item.get("rootCause", ""), 180),
+                "solution": trim_text(item.get("solution", ""), 180),
+                "quickChecks": item.get("quickChecks", [])[:5],
+                "tags": item.get("tags", [])[:6],
+                "references": item.get("references", [])[:4],
+            }
+        )
     return {
         "recentSessions": recent_sessions,
         "recentAnalyses": recent_analyses,
         "testCases": test_cases,
+        "knowledge": knowledge_entries,
     }
 
 
@@ -2016,6 +2244,13 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         ]
     }
     methodology = {
+        "beginner_guidance": [
+            "先确认现象，不要直接猜根因",
+            "先读用户导入资料，再读日志和图片说明",
+            "优先列出低层验证动作，让新手照着执行",
+            "每个判断都必须给出判断依据；没有依据就写暂无分析结果",
+            "优先引用案例库中的相似案例、快速检查项和验证路径",
+        ],
         "fault_attributes": [
             "fault_type",
             "impact_scope",
@@ -2070,6 +2305,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "你是嵌入式自动测试与问题证据管理工作台里的分析助手。"
         "你的职责不是直接替工程师下最终结论，而是根据流程给出结构化分析和下一步引导。"
         "你必须只根据提供的资料、串口日志、导入信息、附件说明、历史沉淀和测试库进行推断，禁止臆造。"
+        "请把整轮输出当作“新手问题定位指引”，而不是专家直接下结论。"
         "请优先遵循六步协议：现象、分层分析、验证方法、根因、解决方案、经验总结。"
         "本轮先只完成现象，以及“分层分析+验证方法”的合并条目。"
         "根因、解决方案、经验总结必须先留空，等待人工验证后再填写。"
@@ -2077,9 +2313,11 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "合并列表中的每一条请显式给出 category、owner、reason、basis、method、result 六个字段。"
         "请优先从多个维度进行可能性分析，至少覆盖：硬件、软件、固件、OS、器件、生产、工艺。"
         "分析思路请参考硬件问题定位方法论：先整理现象与关键属性，再默认按 硬件→接口→驱动→系统→应用 的顺序排查。"
+        "请在 validation_steps、guidance_checklist 里写出适合新手照着做的顺序化动作：先看什么，再看什么，需要什么证据，完成标准是什么。"
         "如果某个维度暂时没有足够结论，也必须在对应条目里写“暂无分析结果”。"
         "严禁为了填满表格而编造事实。所有判断都必须能回溯到用户提供的资料、日志或案例库内容。"
-        "basis 字段必须直接写明依据来源，例如“串口日志：...”“资料：...”“案例库：...”或“暂无分析结果”。"
+        "优先引用 knowledge_library 里的案例条目、快速检查项、验证方法和参考链接；如果案例库没有支撑，也要明确写出。"
+        "basis 字段必须直接写明依据来源，例如“串口日志：...”“资料：...”“案例库：...”“外部参考：...”或“暂无分析结果”。"
         "如果当前证据不足以支持某一行，请把 reason、basis、method、result 写成“暂无分析结果”或明确缺少哪类证据。"
         "请优先帮助新手推进定位：把每一步写成可执行动作，明确先看什么、再看什么、为什么这么看。"
         "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
@@ -2171,6 +2409,160 @@ def try_parse_analysis_json(raw_text: str) -> dict:
     if last_error is not None:
         raise RuntimeError(f"AI 返回 JSON 解析失败：{last_error}；原文片段：{preview}") from last_error
     raise RuntimeError(f"AI 返回 JSON 解析失败；原文片段：{preview}")
+
+
+def _extract_first_json_array(text: str) -> str:
+    start = text.find("[")
+    if start < 0:
+        return ""
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return text[start:].strip()
+
+
+def try_parse_json_document(raw_text: str):
+    text = _strip_model_wrappers(raw_text)
+    object_candidate = _extract_first_json_object(text)
+    array_candidate = _extract_first_json_array(text)
+    attempts = [text]
+    if object_candidate:
+        attempts.append(object_candidate)
+    if array_candidate:
+        attempts.append(array_candidate)
+    if object_candidate:
+        attempts.append(_repair_common_json_issues(object_candidate))
+    if array_candidate:
+        attempts.append(_repair_common_json_issues(array_candidate))
+    attempts.append(_repair_common_json_issues(text))
+    last_error: Exception | None = None
+    for candidate in attempts:
+        if not candidate:
+            continue
+        try:
+            return json.loads(candidate)
+        except Exception as exc:
+            last_error = exc
+    preview = trim_text(text, 240).replace("\n", " ")
+    if last_error is not None:
+        raise RuntimeError(f"AI 返回 JSON 解析失败：{last_error}；原文片段：{preview}") from last_error
+    raise RuntimeError(f"AI 返回 JSON 解析失败；原文片段：{preview}")
+
+
+def knowledge_schema_payload() -> dict:
+    return {
+        "requiredFields": [
+            "caseCode",
+            "title",
+            "sourceType",
+            "issueType",
+            "faultType",
+            "layerHint",
+            "symptom",
+            "rootCause",
+            "solution",
+            "validation",
+            "quickChecks",
+            "references",
+            "tags",
+            "status",
+        ],
+        "sourceTypes": ["manual", "session", "ai_import", "external_reference", "official_doc", "community_case"],
+        "statuses": ["draft", "review", "approved", "deprecated"],
+        "layerHints": ["硬件→接口→驱动→系统→应用", "硬件→接口→驱动", "系统→应用", "自定义"],
+        "example": {
+            "caseCode": "CASE-I2C-000123",
+            "title": "冷启动后 I2C 首次读寄存器 NACK",
+            "sourceType": "manual",
+            "issueType": "I2C",
+            "faultType": "时序/初始化",
+            "layerHint": "硬件→接口→驱动→系统→应用",
+            "symptom": "冷启动 0~50ms 内首次读寄存器返回 NACK，重试后恢复。",
+            "rootCause": "器件上电 ready 时间晚于驱动首次读时序。",
+            "solution": "增加 ready polling 或延时后首读，并补充回归测试。",
+            "validation": "1. 延时 100ms 后再读；2. 轮询 ready bit；3. 冷启动 100 次回归。",
+            "quickChecks": ["确认上电到首读的时间差", "检查是否存在 ready bit", "对比热启动与冷启动差异"],
+            "references": [{"label": "官方 datasheet", "url": "https://example.com/datasheet", "value": "时序要求"}],
+            "tags": ["I2C", "NACK", "cold_boot", "timing"],
+            "status": "draft",
+        },
+    }
+
+
+def build_knowledge_import_prompt(source_title: str, source_url: str, source_text: str) -> str:
+    schema = knowledge_schema_payload()["example"]
+    return (
+        "你是嵌入式案例库的结构化整理助手。"
+        "请只根据输入材料整理案例，禁止补造不存在的根因。"
+        "如果材料不足，请把根因、解决方案、验证方法明确写成“暂无分析结果”或“待验证”。"
+        "请按新手定位流程组织：现象 -> 分层分析线索 -> 验证方法 -> 根因 -> 解决方案 -> 经验总结/快速检查。"
+        "输出必须是纯 JSON，格式为 {\"cases\": [...]}。"
+        "cases 里的每个对象必须包含：caseCode,title,sourceType,issueType,faultType,layerHint,symptom,rootCause,solution,validation,quickChecks,references,tags,status。"
+        "sourceType 固定写 ai_import。references 里至少保留来源标题和来源链接。"
+        "如果材料里出现多个独立案例，可以输出多条；否则只输出一条。\n\n"
+        f"source_title: {source_title or '未提供'}\n"
+        f"source_url: {source_url or '未提供'}\n\n"
+        f"source_text:\n{trim_text(source_text, 12000)}\n\n"
+        f"json_example:\n{json.dumps({'cases': [schema]}, ensure_ascii=False, indent=2)}"
+    )
+
+
+def normalize_ai_import_cases(payload: dict) -> list[dict]:
+    session_id = str(payload.get("sessionId", "")).strip()
+    source_title = str(payload.get("sourceTitle", "")).strip()
+    source_url = str(payload.get("sourceUrl", "")).strip()
+    normalized_cases = payload.get("normalizedCases")
+    if isinstance(normalized_cases, list) and normalized_cases:
+        return [
+            normalize_knowledge_payload(
+                {**item, "sessionId": str(item.get("sessionId", "")).strip() or session_id, "sourceTitle": item.get("sourceTitle", "") or source_title, "sourceUrl": item.get("sourceUrl", "") or source_url},
+                default_source_type="ai_import",
+            )
+            for item in normalized_cases
+            if isinstance(item, dict)
+        ]
+
+    source_text = str(payload.get("sourceText", "")).strip()
+    if not source_text:
+        raise RuntimeError("sourceText 或 normalizedCases 至少提供一项")
+    prompt = build_knowledge_import_prompt(source_title, source_url, source_text)
+    raw_text = call_provider_text(prompt, load_provider_config(), str(int(time.time() * 1000)))
+    parsed = try_parse_json_document(raw_text)
+    if isinstance(parsed, list):
+        cases = parsed
+    elif isinstance(parsed, dict):
+        cases = parsed.get("cases", [])
+    else:
+        raise RuntimeError("AI 导入没有返回可识别的案例数组")
+    if not isinstance(cases, list) or not cases:
+        raise RuntimeError("AI 导入没有生成案例条目")
+    return [
+        normalize_knowledge_payload(
+            {**item, "sessionId": str(item.get("sessionId", "")).strip() or session_id, "sourceTitle": item.get("sourceTitle", "") or source_title, "sourceUrl": item.get("sourceUrl", "") or source_url},
+            default_source_type="ai_import",
+        )
+        for item in cases
+        if isinstance(item, dict)
+    ]
 
 
 def store_analysis(session_id: str, request_text: str, result_json: dict, raw_text: str) -> dict:
@@ -2364,6 +2756,10 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query)
             keyword = str(query.get("q", [""])[0]).strip()
             self.send_json(200, {"knowledge": list_knowledge(keyword)})
+            return
+
+        if path == "/api/knowledge/schema":
+            self.send_json(200, knowledge_schema_payload())
             return
 
         if path == "/testcase/list":
@@ -2643,6 +3039,25 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     return
                 knowledge = create_knowledge_from_session(session_id, payload)
                 self.send_json(200, {"knowledge": knowledge})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/knowledge":
+            try:
+                payload = self.parse_json_body()
+                knowledge = upsert_knowledge_entry(payload, default_source_type=str(payload.get("sourceType", "manual") or "manual"))
+                self.send_json(200, {"ok": True, "knowledge": knowledge})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/knowledge/import":
+            try:
+                payload = self.parse_json_body()
+                cases = normalize_ai_import_cases(payload)
+                stored = [upsert_knowledge_entry(item, default_source_type=item.get("sourceType", "ai_import")) for item in cases]
+                self.send_json(200, {"ok": True, "knowledge": stored, "count": len(stored)})
             except Exception as exc:
                 self.send_json(500, {"error": str(exc)})
             return
@@ -2972,6 +3387,20 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json(200, {"ok": True, "sessionId": session_id})
             except KeyError:
                 self.send_json(404, {"error": "analysis not found"})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+        if path.startswith("/api/knowledge/"):
+            parts = path.split("/")
+            if len(parts) < 4 or not parts[3]:
+                self.send_json(400, {"error": "knowledge id is required"})
+                return
+            knowledge_id = parts[3]
+            try:
+                delete_knowledge(knowledge_id)
+                self.send_json(200, {"ok": True})
+            except KeyError:
+                self.send_json(404, {"error": "knowledge not found"})
             except Exception as exc:
                 self.send_json(500, {"error": str(exc)})
             return

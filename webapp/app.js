@@ -60,11 +60,39 @@ const elements = {
   closeAnalysisHistoryModalBtn: document.getElementById("close-analysis-history-modal-btn"),
   knowledgeSearch: document.getElementById("knowledge-search"),
   searchKnowledgeBtn: document.getElementById("search-knowledge-btn"),
+  newKnowledgeBtn: document.getElementById("new-knowledge-btn"),
+  saveKnowledgeBtn: document.getElementById("save-knowledge-btn"),
+  deleteKnowledgeBtn: document.getElementById("delete-knowledge-btn"),
   createKnowledgeBtn: document.getElementById("create-knowledge-btn"),
   applyKnowledgeBtn: document.getElementById("apply-knowledge-btn"),
   knowledgeTagCloud: document.getElementById("knowledge-tag-cloud"),
   knowledgeList: document.getElementById("knowledge-list"),
+  knowledgeCaseCode: document.getElementById("knowledge-case-code"),
+  knowledgeTitle: document.getElementById("knowledge-title"),
+  knowledgeStatus: document.getElementById("knowledge-status"),
+  knowledgeSourceType: document.getElementById("knowledge-source-type"),
+  knowledgeIssueType: document.getElementById("knowledge-issue-type"),
+  knowledgeFaultType: document.getElementById("knowledge-fault-type"),
+  knowledgeLayerHint: document.getElementById("knowledge-layer-hint"),
+  knowledgeSourceTitle: document.getElementById("knowledge-source-title"),
+  knowledgeSourceUrl: document.getElementById("knowledge-source-url"),
+  knowledgeSymptom: document.getElementById("knowledge-symptom"),
+  knowledgeQuickChecks: document.getElementById("knowledge-quick-checks"),
+  knowledgeTags: document.getElementById("knowledge-tags"),
+  knowledgeRootCause: document.getElementById("knowledge-root-cause"),
+  knowledgeSolution: document.getElementById("knowledge-solution"),
+  knowledgeValidation: document.getElementById("knowledge-validation"),
+  knowledgeRelatedCases: document.getElementById("knowledge-related-cases"),
+  knowledgeReferences: document.getElementById("knowledge-references"),
+  knowledgeEditorStatus: document.getElementById("knowledge-editor-status"),
   knowledgeDetail: document.getElementById("knowledge-detail"),
+  knowledgeImportTitle: document.getElementById("knowledge-import-title"),
+  knowledgeImportUrl: document.getElementById("knowledge-import-url"),
+  knowledgeImportText: document.getElementById("knowledge-import-text"),
+  importKnowledgeBtn: document.getElementById("import-knowledge-btn"),
+  loadKnowledgeSchemaBtn: document.getElementById("load-knowledge-schema-btn"),
+  knowledgeImportStatus: document.getElementById("knowledge-import-status"),
+  knowledgeSchemaPreview: document.getElementById("knowledge-schema-preview"),
   navItems: Array.from(document.querySelectorAll(".nav-item")),
   views: Array.from(document.querySelectorAll(".view-page")),
 };
@@ -80,6 +108,7 @@ const state = {
   selectedCompareIds: [],
   knowledge: [],
   selectedKnowledgeId: "",
+  knowledgeSchema: null,
   lastMissingInfo: [],
   rowEditState: {},
   serialPorts: [],
@@ -176,7 +205,7 @@ function setCurrentView(view) {
   state.currentView = view;
   const titles = {
     analysis: ["分析中心", "按“现象 -> 分层分析 -> 验证方法 -> 根因 -> 解决方案 -> 经验总结”推进定位。"],
-    library: ["案例库", "查看、搜索、复用历史经验和外部资源。"],
+    library: ["案例库", "按统一模板管理、搜索、贡献和 AI 导入结构化案例。"],
   };
   const [title, subtitle] = titles[view] || titles.analysis;
   elements.pageTitle.textContent = title;
@@ -1449,8 +1478,138 @@ function closeAnalysisHistoryModal() {
 async function loadKnowledge(keyword = "") {
   const data = await apiGet(`/knowledge/search${keyword ? `?q=${encodeURIComponent(keyword)}` : ""}`);
   state.knowledge = data.knowledge || [];
-  if (!state.selectedKnowledgeId && state.knowledge.length) state.selectedKnowledgeId = state.knowledge[0].id;
+  if (!state.knowledge.some((item) => item.id === state.selectedKnowledgeId)) {
+    state.selectedKnowledgeId = state.knowledge[0]?.id || "";
+  }
   renderKnowledge();
+}
+
+function parseLineArray(text) {
+  return String(text || "")
+    .split(/\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseReferenceLines(text) {
+  return parseLineArray(text).map((line) => {
+    if (line.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed && typeof parsed === "object") {
+          return {
+            label: String(parsed.label || "").trim(),
+            url: String(parsed.url || "").trim(),
+            value: String(parsed.value || "").trim(),
+          };
+        }
+      } catch (error) {
+        console.warn("invalid reference json", error);
+      }
+    }
+    return { label: line, url: "", value: "" };
+  });
+}
+
+function stringifyReferenceLines(items) {
+  return (items || [])
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        if (item.url || item.value) return JSON.stringify({ label: item.label || "", url: item.url || "", value: item.value || "" }, null, 0);
+        return item.label || "";
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function blankKnowledgeDraft() {
+  return {
+    id: "",
+    caseCode: "",
+    title: "",
+    status: "draft",
+    sourceType: "manual",
+    issueType: "",
+    faultType: "",
+    layerHint: "硬件→接口→驱动→系统→应用",
+    sourceTitle: "",
+    sourceUrl: "",
+    symptom: "",
+    quickChecks: [],
+    tags: [],
+    rootCause: "",
+    solution: "",
+    validation: "",
+    relatedCases: [],
+    references: [],
+  };
+}
+
+function getSelectedKnowledge() {
+  return state.knowledge.find((item) => item.id === state.selectedKnowledgeId) || null;
+}
+
+function fillKnowledgeEditor(detail) {
+  const item = detail || blankKnowledgeDraft();
+  elements.knowledgeCaseCode.value = item.caseCode || "";
+  elements.knowledgeTitle.value = item.title || "";
+  elements.knowledgeStatus.value = item.status || "draft";
+  elements.knowledgeSourceType.value = item.sourceType || "manual";
+  elements.knowledgeIssueType.value = item.issueType || "";
+  elements.knowledgeFaultType.value = item.faultType || "";
+  elements.knowledgeLayerHint.value = item.layerHint || "硬件→接口→驱动→系统→应用";
+  elements.knowledgeSourceTitle.value = item.sourceTitle || "";
+  elements.knowledgeSourceUrl.value = item.sourceUrl || "";
+  elements.knowledgeSymptom.value = item.symptom || "";
+  elements.knowledgeQuickChecks.value = (item.quickChecks || []).join("\n");
+  elements.knowledgeTags.value = (item.tags || []).join("\n");
+  elements.knowledgeRootCause.value = item.rootCause || "";
+  elements.knowledgeSolution.value = item.solution || "";
+  elements.knowledgeValidation.value = item.validation || "";
+  elements.knowledgeRelatedCases.value = stringifyReferenceLines(item.relatedCases || []);
+  elements.knowledgeReferences.value = stringifyReferenceLines(item.references || []);
+}
+
+function collectKnowledgeEditorPayload() {
+  return {
+    id: state.selectedKnowledgeId || "",
+    sessionId: state.activeSessionId || "",
+    caseCode: elements.knowledgeCaseCode.value.trim(),
+    title: elements.knowledgeTitle.value.trim(),
+    status: elements.knowledgeStatus.value,
+    sourceType: elements.knowledgeSourceType.value,
+    issueType: elements.knowledgeIssueType.value.trim(),
+    faultType: elements.knowledgeFaultType.value.trim(),
+    layerHint: elements.knowledgeLayerHint.value.trim(),
+    sourceTitle: elements.knowledgeSourceTitle.value.trim(),
+    sourceUrl: elements.knowledgeSourceUrl.value.trim(),
+    symptom: elements.knowledgeSymptom.value.trim(),
+    quickChecks: parseLineArray(elements.knowledgeQuickChecks.value),
+    tags: parseLineArray(elements.knowledgeTags.value),
+    rootCause: elements.knowledgeRootCause.value.trim(),
+    solution: elements.knowledgeSolution.value.trim(),
+    validation: elements.knowledgeValidation.value.trim(),
+    relatedCases: parseReferenceLines(elements.knowledgeRelatedCases.value),
+    references: parseReferenceLines(elements.knowledgeReferences.value),
+  };
+}
+
+function renderKnowledgeDetail(detail) {
+  elements.knowledgeDetail.innerHTML = "";
+  if (!detail) {
+    elements.knowledgeDetail.innerHTML = '<p class="helper">选择一条案例后，这里会显示标准化摘要和复用提示。</p>';
+    return;
+  }
+  elements.knowledgeDetail.appendChild(createListSection("摘要 / 现象", [detail.symptom || detail.title || "无"]));
+  elements.knowledgeDetail.appendChild(createListSection("快速检查", detail.quickChecks || []));
+  elements.knowledgeDetail.appendChild(createListSection("根因", [detail.rootCause || "待补充"]));
+  elements.knowledgeDetail.appendChild(createListSection("解决方案", [detail.solution || "待补充"]));
+  elements.knowledgeDetail.appendChild(createListSection("验证方法", [detail.validation || "待补充"]));
+  elements.knowledgeDetail.appendChild(createListSection("参考链接", detail.references || []));
+  elements.knowledgeDetail.appendChild(createListSection("标签", detail.tags || []));
 }
 
 function renderKnowledge() {
@@ -1458,7 +1617,8 @@ function renderKnowledge() {
   elements.knowledgeTagCloud.innerHTML = "";
   if (!state.knowledge.length) {
     elements.knowledgeList.innerHTML = '<p class="helper">还没有沉淀到案例库的条目。</p>';
-    elements.knowledgeDetail.innerHTML = '<p class="helper">从当前会话生成一条案例后，这里会显示详情。</p>';
+    fillKnowledgeEditor(blankKnowledgeDraft());
+    renderKnowledgeDetail(null);
     return;
   }
   const orderedKnowledge = [...state.knowledge].sort((a, b) => {
@@ -1496,8 +1656,8 @@ function renderKnowledge() {
     article.className = `list-item compact-row selectable ${state.selectedKnowledgeId === item.id ? "active" : ""}`;
     article.innerHTML = `
       <div class="knowledge-row-main">
-        <strong>${item.title}</strong>
-        <span class="item-meta">${(item.tags || []).join(", ") || "无标签"}</span>
+        <strong>${item.caseCode || "未编号"} · ${item.title}</strong>
+        <span class="item-meta">${[item.issueType, item.faultType, item.status].filter(Boolean).join(" / ") || "未分类"} · ${(item.tags || []).join(", ") || "无标签"}</span>
       </div>
     `;
     article.addEventListener("click", () => {
@@ -1517,23 +1677,21 @@ function renderKnowledge() {
     elements.knowledgeList.appendChild(article);
   });
   const detail = orderedKnowledge.find((item) => item.id === state.selectedKnowledgeId) || orderedKnowledge[0];
-  elements.knowledgeDetail.innerHTML = "";
-  elements.knowledgeDetail.appendChild(createListSection("标题 / 问题描述", [detail.title]));
-  elements.knowledgeDetail.appendChild(createListSection("根因", [detail.rootCause || "无"]));
-  elements.knowledgeDetail.appendChild(createListSection("解决方案", [detail.solution || "无"]));
-  elements.knowledgeDetail.appendChild(createListSection("验证方法", [detail.validation || "无"]));
-  elements.knowledgeDetail.appendChild(createListSection("关联资源", detail.relatedCases || []));
-  elements.knowledgeDetail.appendChild(createListSection("标签", detail.tags || []));
+  state.selectedKnowledgeId = detail.id;
+  fillKnowledgeEditor(detail);
+  renderKnowledgeDetail(detail);
 }
 
 function applySelectedKnowledgeToAnalysis() {
   const detail = state.knowledge.find((item) => item.id === state.selectedKnowledgeId);
   if (!detail) throw new Error("请先在案例库里选择一条经验。");
   const text = [
-    `参考案例：${detail.title}`,
+    `参考案例：${detail.caseCode || ""} ${detail.title}`,
+    `问题现象：${detail.symptom || "无"}`,
     `根因：${detail.rootCause || "无"}`,
     `解决方案：${detail.solution || "无"}`,
     `验证方法：${detail.validation || "无"}`,
+    `快速检查：${(detail.quickChecks || []).join("；") || "无"}`,
   ].join("\n");
   elements.analysisStatus.textContent = text;
   elements.analysisStatus.classList.remove("error");
@@ -1546,6 +1704,65 @@ async function createKnowledgeFromCurrentSession() {
   state.selectedKnowledgeId = data.knowledge.id;
   await Promise.all([loadOverview(), loadKnowledge()]);
   setCurrentView("library");
+}
+
+function resetKnowledgeEditor() {
+  state.selectedKnowledgeId = "";
+  fillKnowledgeEditor(blankKnowledgeDraft());
+  renderKnowledgeDetail(null);
+  elements.knowledgeEditorStatus.textContent = "已切换到新建案例模式。";
+  elements.knowledgeEditorStatus.classList.remove("error");
+}
+
+async function saveKnowledgeEntry() {
+  const payload = collectKnowledgeEditorPayload();
+  if (!payload.title) throw new Error("案例标题不能为空。");
+  const data = await apiPost("/api/knowledge", payload);
+  state.selectedKnowledgeId = data.knowledge.id;
+  elements.knowledgeEditorStatus.textContent = `案例已保存：${data.knowledge.caseCode || data.knowledge.title}`;
+  elements.knowledgeEditorStatus.classList.remove("error");
+  await Promise.all([loadOverview(), loadKnowledge(elements.knowledgeSearch.value.trim())]);
+}
+
+async function deleteKnowledgeEntry() {
+  const selected = getSelectedKnowledge();
+  if (!selected) throw new Error("请先选择要删除的案例。");
+  if (!window.confirm(`确定删除案例“${selected.title}”吗？`)) return;
+  const response = await fetch(`/api/knowledge/${selected.id}`, { method: "DELETE" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "delete failed");
+  state.selectedKnowledgeId = "";
+  await Promise.all([loadOverview(), loadKnowledge(elements.knowledgeSearch.value.trim())]);
+  elements.knowledgeEditorStatus.textContent = "案例已删除。";
+  elements.knowledgeEditorStatus.classList.remove("error");
+}
+
+async function importKnowledgeByAI() {
+  const payload = {
+    sessionId: state.activeSessionId || "",
+    sourceTitle: elements.knowledgeImportTitle.value.trim(),
+    sourceUrl: elements.knowledgeImportUrl.value.trim(),
+    sourceText: elements.knowledgeImportText.value.trim(),
+  };
+  if (!payload.sourceText) throw new Error("请先粘贴外部案例材料。");
+  elements.knowledgeImportStatus.textContent = "AI 正在按案例模板规范化导入，请稍候...";
+  elements.knowledgeImportStatus.classList.remove("error");
+  const data = await apiPost("/api/knowledge/import", payload);
+  elements.knowledgeImportStatus.textContent = `已导入 ${data.count || 0} 条案例草稿。`;
+  elements.knowledgeImportStatus.classList.remove("error");
+  if (data.knowledge?.length) {
+    state.selectedKnowledgeId = data.knowledge[0].id;
+  }
+  await Promise.all([loadOverview(), loadKnowledge(elements.knowledgeSearch.value.trim())]);
+}
+
+async function loadKnowledgeSchema() {
+  const data = await apiGet("/api/knowledge/schema");
+  state.knowledgeSchema = data;
+  elements.knowledgeSchemaPreview.textContent = JSON.stringify(data, null, 2);
+  elements.knowledgeSchemaPreview.classList.toggle("hidden", false);
+  elements.knowledgeImportStatus.textContent = "已加载案例导入规范。";
+  elements.knowledgeImportStatus.classList.remove("error");
 }
 
 function bindEvents() {
@@ -1561,6 +1778,9 @@ function bindEvents() {
   elements.saveAnalysisSummaryBtn.addEventListener("click", () => saveAnalysisSummary().catch(showGenericError));
   elements.compareSelectedBtn.addEventListener("click", compareSelectedAnalyses);
   elements.searchKnowledgeBtn.addEventListener("click", () => loadKnowledge(elements.knowledgeSearch.value.trim()).catch(showGenericError));
+  elements.newKnowledgeBtn.addEventListener("click", resetKnowledgeEditor);
+  elements.saveKnowledgeBtn.addEventListener("click", () => saveKnowledgeEntry().catch(showGenericError));
+  elements.deleteKnowledgeBtn.addEventListener("click", () => deleteKnowledgeEntry().catch(showGenericError));
   elements.createKnowledgeBtn.addEventListener("click", () => createKnowledgeFromCurrentSession().catch(showGenericError));
   elements.applyKnowledgeBtn.addEventListener("click", () => {
     try {
@@ -1569,6 +1789,8 @@ function bindEvents() {
       showGenericError(error);
     }
   });
+  elements.importKnowledgeBtn.addEventListener("click", () => importKnowledgeByAI().catch(showGenericError));
+  elements.loadKnowledgeSchemaBtn.addEventListener("click", () => loadKnowledgeSchema().catch(showGenericError));
   elements.refreshSerialPortsBtn.addEventListener("click", () => loadSerialPorts().catch(showGenericError));
   elements.startSerialCaptureBtn.addEventListener("click", () => startSerialCapture().catch(showGenericError));
   elements.stopSerialCaptureBtn.addEventListener("click", () => stopSerialCapture().catch(showGenericError));

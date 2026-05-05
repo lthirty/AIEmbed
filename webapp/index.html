@@ -262,24 +262,101 @@
           <section class="panel">
             <div class="panel-head">
               <h3>案例库</h3>
-              <span class="helper">经验沉淀、搜索、筛选和复用</span>
+              <span class="helper">结构化案例、受控贡献、搜索复用和 AI 导入</span>
+            </div>
+            <div class="guide-strip guide-strip-three">
+              <div class="guide-step"><strong>查找</strong><span>按标题、标签、问题类型和故障类型快速筛到相似案例。</span></div>
+              <div class="guide-step"><strong>贡献</strong><span>手工录入或从当前 Session 生成，再用统一模板保存为正式案例。</span></div>
+              <div class="guide-step"><strong>导入</strong><span>外部资料可先走 AI 规范化导入，再进入人工审核和复用。</span></div>
             </div>
             <div class="inline-actions">
-              <input id="knowledge-search" type="text" placeholder="搜索根因、方案或标签">
+              <input id="knowledge-search" type="text" placeholder="搜索标题、根因、标签、问题类型或来源">
               <button id="search-knowledge-btn" type="button">搜索</button>
+              <button id="new-knowledge-btn" type="button">新建案例</button>
+              <button id="save-knowledge-btn" type="button">保存案例</button>
+              <button id="delete-knowledge-btn" type="button">删除案例</button>
               <button id="create-knowledge-btn" type="button">从当前 Session 生成</button>
               <button id="apply-knowledge-btn" type="button">应用到当前分析</button>
             </div>
             <div id="knowledge-tag-cloud" class="tag-cloud"></div>
-            <div id="knowledge-list" class="list-stack"></div>
+            <div id="knowledge-list" class="list-stack knowledge-scroll-list"></div>
           </section>
 
           <section class="panel">
             <div class="panel-head">
-              <h3>详情</h3>
-              <span class="helper">问题描述、根因、解决方案、验证方法、关联 TestCase</span>
+              <h3>案例编辑</h3>
+              <span class="helper">统一按结构化模板维护，可手工编写、导入和更新</span>
             </div>
+            <div class="form-grid three">
+              <label>案例编号<input id="knowledge-case-code" type="text" placeholder="例如 CASE-I2C-000123"></label>
+              <label>标题<input id="knowledge-title" type="text" placeholder="例如 冷启动后 I2C 首次读寄存器 NACK"></label>
+              <label>状态
+                <select id="knowledge-status">
+                  <option value="draft">draft</option>
+                  <option value="review">review</option>
+                  <option value="approved">approved</option>
+                  <option value="deprecated">deprecated</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-grid three">
+              <label>来源类型
+                <select id="knowledge-source-type">
+                  <option value="manual">manual</option>
+                  <option value="session">session</option>
+                  <option value="ai_import">ai_import</option>
+                  <option value="external_reference">external_reference</option>
+                  <option value="official_doc">official_doc</option>
+                  <option value="community_case">community_case</option>
+                </select>
+              </label>
+              <label>问题类型<input id="knowledge-issue-type" type="text" placeholder="例如 I2C / UART / WIFI"></label>
+              <label>故障类型<input id="knowledge-fault-type" type="text" placeholder="例如 时序 / 初始化 / 兼容性"></label>
+            </div>
+            <div class="form-grid three">
+              <label>定位顺序
+                <select id="knowledge-layer-hint">
+                  <option value="硬件→接口→驱动→系统→应用">硬件→接口→驱动→系统→应用</option>
+                  <option value="硬件→接口→驱动">硬件→接口→驱动</option>
+                  <option value="系统→应用">系统→应用</option>
+                  <option value="自定义">自定义</option>
+                </select>
+              </label>
+              <label>来源标题<input id="knowledge-source-title" type="text" placeholder="例如 官方 FAQ / 外部帖子标题"></label>
+              <label>来源链接<input id="knowledge-source-url" type="text" placeholder="https://..."></label>
+            </div>
+            <label>问题现象<textarea id="knowledge-symptom" rows="4" placeholder="现象、触发条件、影响范围、复现频率"></textarea></label>
+            <div class="form-grid two">
+              <label>快速检查<textarea id="knowledge-quick-checks" rows="4" placeholder="每行一条，适合新手先做的 quick checks"></textarea></label>
+              <label>标签<textarea id="knowledge-tags" rows="4" placeholder="每行一条或逗号分隔，例如 I2C, cold_boot, NACK"></textarea></label>
+            </div>
+            <label>根因<textarea id="knowledge-root-cause" rows="4" placeholder="当前确认的根因；若未确认，可写待验证"></textarea></label>
+            <label>解决方案<textarea id="knowledge-solution" rows="4" placeholder="临时规避、永久修复和回归建议"></textarea></label>
+            <label>验证方法<textarea id="knowledge-validation" rows="4" placeholder="验证动作、预期结果和完成标准"></textarea></label>
+            <div class="form-grid two">
+              <label>关联案例 / 资源<textarea id="knowledge-related-cases" rows="4" placeholder='每行一条，支持 JSON：{"label":"GitHub","url":"https://..."}'></textarea></label>
+              <label>参考链接 / 引用<textarea id="knowledge-references" rows="4" placeholder='每行一条，支持 JSON：{"label":"Datasheet","url":"https://...","value":"时序要求"}'></textarea></label>
+            </div>
+            <p id="knowledge-editor-status" class="helper">案例库遵循结构化模板，建议优先填：现象、快速检查、验证方法、根因、解决方案。</p>
             <div id="knowledge-detail" class="analysis-readable"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>AI 导入接口</h3>
+              <span class="helper">给未来的外部搜索代理或人工整理入口使用，先规范化再入库</span>
+            </div>
+            <div class="form-grid two">
+              <label>导入来源标题<input id="knowledge-import-title" type="text" placeholder="例如 官方 FAQ / GitHub Issue / 社区答疑"></label>
+              <label>导入来源链接<input id="knowledge-import-url" type="text" placeholder="https://..."></label>
+            </div>
+            <label>原始案例材料<textarea id="knowledge-import-text" rows="8" placeholder="粘贴网页摘要、官方 FAQ、Issue 讨论、调试记录。AI 会先按案例库模板规范化，再生成 draft 条目。"></textarea></label>
+            <div class="inline-actions">
+              <button id="import-knowledge-btn" type="button">AI 规范导入</button>
+              <button id="load-knowledge-schema-btn" type="button">查看导入规范</button>
+            </div>
+            <p id="knowledge-import-status" class="helper">接口目标：方便 AI 定期从网上搜索案例后，把摘要、引用、来源链接和结构化字段统一写入案例库。</p>
+            <pre id="knowledge-schema-preview" class="schema-preview hidden"></pre>
           </section>
         </section>
       </section>

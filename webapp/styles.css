@@ -300,6 +300,7 @@ button:disabled {
 .test-layout { grid-template-columns: 0.9fr 1.1fr 1fr; }
 .analysis-layout { grid-template-columns: 0.8fr 1.1fr 1fr; }
 .form-grid.two { grid-template-columns: 1fr 1fr; }
+.form-grid.three { grid-template-columns: repeat(3, 1fr); }
 .form-grid.four { grid-template-columns: repeat(4, 1fr); }
 .summary-edit-grid { grid-template-columns: repeat(5, 1fr); }
 .quick-actions { grid-template-columns: repeat(2, 1fr); }
@@ -1045,6 +1046,10 @@ button:disabled {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.guide-strip-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .guide-step,
 .flow-panel {
   border: 1px solid var(--line);
@@ -1101,6 +1106,18 @@ button:disabled {
 
 .tag-chip:active {
   transform: translateY(1px) scale(0.985);
+}
+
+.schema-preview {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text);
+  font: 12px/1.5 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 1500px) {
