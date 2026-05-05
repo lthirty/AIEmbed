@@ -110,21 +110,59 @@
 
           <section class="panel">
             <div class="panel-head">
-              <h3>01. 资料导入与问题描述</h3>
-              <span class="helper">先导入规格书、测试报告、图片等资料，再补充问题描述、日志和附件</span>
+              <h3>01. 新手定位流程</h3>
+              <span class="helper">先记录现象和证据，再按分层顺序验证，最后才讨论根因和方案</span>
             </div>
-            <section class="guide-strip">
-              <div class="guide-step"><strong>Step 1</strong><span>导入规格书、测试报告、图片等资料</span></div>
-              <div class="guide-step"><strong>Step 2</strong><span>描述碰到的问题，并补充测试报告、图片或日志</span></div>
-              <div class="guide-step"><strong>Step 3</strong><span>让 AI 结合参考库生成分析与验证建议</span></div>
-              <div class="guide-step"><strong>Step 4</strong><span>人工执行、修正并沉淀结论</span></div>
+            <section class="guide-strip guide-strip-six">
+              <div class="guide-step"><strong>01 现象</strong><span>先写清楚现象、触发条件、影响范围和复现频率。</span></div>
+              <div class="guide-step"><strong>02 分层分析</strong><span>默认按 硬件 → 接口 → 驱动 → 系统 → 应用 的顺序判断。</span></div>
+              <div class="guide-step"><strong>03 验证方法</strong><span>每个怀疑点都必须配一个可执行验证动作和期望结果。</span></div>
+              <div class="guide-step"><strong>04 根因</strong><span>没有通过验证的证据前，不要急着写根因。</span></div>
+              <div class="guide-step"><strong>05 解决方案</strong><span>根因确认后再区分临时方案和永久方案。</span></div>
+              <div class="guide-step"><strong>06 经验总结</strong><span>把有效的定位路径沉淀成案例和检查模板。</span></div>
             </section>
+            <section class="methodology-grid">
+              <article class="flow-panel">
+                <h4>定位顺序</h4>
+                <ol class="method-list">
+                  <li>先导入规格书、测试报告、图片或历史资料。</li>
+                  <li>至少补一段问题描述或一段串口日志。</li>
+                  <li>先看低层证据，再看高层业务现象。</li>
+                  <li>先验证，再填写根因和解决方案。</li>
+                </ol>
+              </article>
+              <article class="flow-panel">
+                <h4>分层检查顺序</h4>
+                <ul class="method-list">
+                  <li><strong>硬件层</strong>：电源、复位、时钟、连线、焊接。</li>
+                  <li><strong>接口层</strong>：I2C ACK/NACK、UART 丢包/乱码、Wi-Fi reason。</li>
+                  <li><strong>驱动层</strong>：初始化顺序、寄存器、DMA/中断、错误位。</li>
+                  <li><strong>系统层</strong>：reset reason、watchdog、任务调度、内存。</li>
+                  <li><strong>应用层</strong>：状态机、阈值、重试、降级策略。</li>
+                </ul>
+              </article>
+              <article class="flow-panel">
+                <h4>证据使用原则</h4>
+                <ul class="method-list">
+                  <li>事实必须绑定资料、日志、图片、寄存器或案例库来源。</li>
+                  <li>没有证据时只能写“暂无分析结果”或“待验证假设”。</li>
+                  <li>如果验证结果推翻当前判断，必须回退到分层分析重新排序。</li>
+                </ul>
+              </article>
+            </section>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>02. 资料导入与问题记录</h3>
+              <span class="helper">先把证据准备齐，再交给 AI 做首轮结构化分析</span>
+            </div>
             <article class="stack-card">
               <h4>A. 资料导入</h4>
               <label>标题<input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述"></label>
               <label>文件<input id="material-file" type="file"></label>
               <button id="upload-material-btn" type="button">上传资料</button>
-              <p id="material-result" class="helper">支持 txt / md / log / json / csv / yaml / pdf，并显示导入文件名。</p>
+              <p id="material-result" class="helper">优先导入规格书、数据手册、客户测试报告、图片、原理图片段等。资料越接近现场事实，后面的分析越可靠。</p>
             </article>
 
             <div class="evidence-summary">
@@ -138,10 +176,10 @@
             <article class="stack-card">
               <h4>B. 问题描述 / 测试报告 / 图片 / 日志</h4>
               <label>标题<input id="info-title" type="text" placeholder="例如 现场观察 / 测试报告 / 异常截图 / 串口日志"></label>
-              <label>问题描述<textarea id="info-content" rows="6" placeholder="描述环境、复现步骤、异常现象，以及你当前最想定位的问题。这里也可以直接粘贴测试报告摘要或串口日志。"></textarea></label>
+              <label>问题描述<textarea id="info-content" rows="6" placeholder="建议按这四点写：1. 现象是什么；2. 在什么条件下触发；3. 影响范围有多大；4. 复现频率是多少。这里也可以直接粘贴测试报告摘要或串口日志。"></textarea></label>
               <label>附件<input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
               <button id="save-info-btn" type="button">导入问题信息</button>
-              <p id="info-result" class="helper">这里可导入测试报告、图片、日志或补充问题说明。该栏内容不是必填项。</p>
+              <p id="info-result" class="helper">这里不是必填项，但至少建议补一段问题描述或一段串口日志。没有现场事实时，AI 只能给出“待验证假设”。</p>
               <div class="serial-capture-card">
                 <div class="panel-head compact-head">
                   <h5>串口 Log 抓取</h5>
@@ -167,14 +205,14 @@
 
           <section class="panel">
             <div class="panel-head">
-              <h3>02. AI 分析</h3>
-              <span class="helper">AI 会参考你导入的资料、当前证据和经验库，先给出现象和验证建议，根因与解决方案留待人工确认</span>
+              <h3>03. AI 分析</h3>
+              <span class="helper">AI 会先整理现象，再按分层顺序给出验证建议；根因与解决方案保留给人工确认</span>
             </div>
             <div class="inline-actions">
               <button id="suggest-missing-btn" type="button">检测缺失信息</button>
               <button id="analyze-btn" type="button">开始分析</button>
             </div>
-            <p id="analysis-status" class="helper">资料和问题信息都不是必填项；缺失内容会在分析结果里作为待补充信息提示。</p>
+            <p id="analysis-status" class="helper">AI 默认按“硬件 → 接口 → 驱动 → 系统 → 应用”排序分析，并把没有证据支撑的内容标为“暂无分析结果”或“待验证”。</p>
             <section class="steps-box">
               <span class="role">分析流程</span>
               <div id="workflow-steps" class="workflow-steps workflow-inline"></div>

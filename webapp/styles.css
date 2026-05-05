@@ -1041,6 +1041,10 @@ button:disabled {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.guide-strip-six {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .guide-step,
 .flow-panel {
   border: 1px solid var(--line);
@@ -1056,6 +1060,28 @@ button:disabled {
   display: block;
   margin-bottom: 6px;
   color: var(--accent-2);
+}
+
+.methodology-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.flow-panel {
+  padding: 16px 18px;
+}
+
+.flow-panel h4 {
+  margin: 0 0 10px;
+  color: var(--accent-2);
+}
+
+.method-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
 }
 
 .tag-chip {
@@ -1082,6 +1108,10 @@ button:disabled {
     grid-template-columns: 280px 1fr;
   }
   .guide-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .guide-strip-six,
+  .methodology-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .overview-top,
@@ -1129,6 +1159,10 @@ button:disabled {
     align-items: flex-start;
   }
   .guide-strip {
+    grid-template-columns: 1fr;
+  }
+  .guide-strip-six,
+  .methodology-grid {
     grid-template-columns: 1fr;
   }
   .session-inline-grid,

@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.20.10"
+APP_VERSION = "v0.21.0"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -2015,6 +2015,22 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
             {"stage": "lessons", "label": "经验总结", "expectation": "提炼为可复用规则和后续 case 方向"},
         ]
     }
+    methodology = {
+        "fault_attributes": [
+            "fault_type",
+            "impact_scope",
+            "trigger_condition",
+            "frequency",
+            "reproducibility",
+            "evidence_types",
+        ],
+        "layer_order": ["硬件", "接口", "驱动", "系统", "应用"],
+        "evidence_rules": [
+            "事实必须绑定证据来源",
+            "没有证据的结论只能写成待验证假设或暂无分析结果",
+            "如果验证推翻当前判断，必须回到分层分析重新排序",
+        ],
+    }
 
     schema = {
         "phenomenon_summary": "",
@@ -2060,15 +2076,18 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
         "合并列表中的每一条请显式给出 category、owner、reason、basis、method、result 六个字段。"
         "请优先从多个维度进行可能性分析，至少覆盖：硬件、软件、固件、OS、器件、生产、工艺。"
+        "分析思路请参考硬件问题定位方法论：先整理现象与关键属性，再默认按 硬件→接口→驱动→系统→应用 的顺序排查。"
         "如果某个维度暂时没有足够结论，也必须在对应条目里写“暂无分析结果”。"
         "严禁为了填满表格而编造事实。所有判断都必须能回溯到用户提供的资料、日志或案例库内容。"
         "basis 字段必须直接写明依据来源，例如“串口日志：...”“资料：...”“案例库：...”或“暂无分析结果”。"
         "如果当前证据不足以支持某一行，请把 reason、basis、method、result 写成“暂无分析结果”或明确缺少哪类证据。"
+        "请优先帮助新手推进定位：把每一步写成可执行动作，明确先看什么、再看什么、为什么这么看。"
         "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
         "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
         f"session:\n{json.dumps({k: session_payload.get(k) for k in ['id', 'title', 'customerName', 'deviceModel', 'serialNumber', 'deviceIp', 'issueType', 'severity', 'workflowStage', 'symptom', 'owner', 'status', 'createdAt', 'updatedAt']}, ensure_ascii=False, indent=2)}\n\n"
         f"workflow_protocol:\n{json.dumps(protocol, ensure_ascii=False, indent=2)}\n\n"
+        f"methodology:\n{json.dumps(methodology, ensure_ascii=False, indent=2)}\n\n"
         f"knowledge_library:\n{json.dumps(summarize_library_context(session_payload), ensure_ascii=False, indent=2)}\n\n"
         f"user_request:\n{request_text.strip() or '请基于当前资料、日志和历史沉淀自动分析，并给出流程化引导。'}\n\n"
         f"selected_evidence:\n{'\n\n'.join(selected_sections)}\n\n"
@@ -2076,22 +2095,82 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
     )
 
 
-def try_parse_analysis_json(raw_text: str) -> dict:
-    text = raw_text.strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
+def _strip_model_wrappers(text: str) -> str:
+    cleaned = text.strip().lstrip("\ufeff")
+    cleaned = re.sub(r"^\s*```(?:json)?\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*```\s*$", "", cleaned)
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", cleaned, flags=re.I)
+    return cleaned.strip()
 
-    match = re.search(r"\{.*\}", text, re.S)
-    if not match:
+
+def _extract_first_json_object(text: str) -> str:
+    start = text.find("{")
+    if start < 0:
+        return ""
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return text[start:].strip()
+
+
+def _repair_common_json_issues(text: str) -> str:
+    fixed = text.strip()
+    fixed = fixed.replace("\r\n", "\n").replace("\r", "\n")
+    fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+    fixed = re.sub(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)", r'\1"\2"\3', fixed)
+    return fixed
+
+
+def try_parse_analysis_json(raw_text: str) -> dict:
+    text = _strip_model_wrappers(raw_text)
+    attempts: list[str] = []
+    if text:
+        attempts.append(text)
+    extracted = _extract_first_json_object(text)
+    if extracted and extracted not in attempts:
+        attempts.append(extracted)
+    if extracted:
+        repaired = _repair_common_json_issues(extracted)
+        if repaired not in attempts:
+            attempts.append(repaired)
+    repaired_full = _repair_common_json_issues(text)
+    if repaired_full and repaired_full not in attempts:
+        attempts.append(repaired_full)
+
+    last_error: Exception | None = None
+    for candidate in attempts:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception as exc:
+            last_error = exc
+
+    if not extracted:
         raise RuntimeError("AI 返回内容不是合法 JSON。")
-    try:
-        return json.loads(match.group(0))
-    except Exception as exc:
-        raise RuntimeError(f"AI 返回 JSON 解析失败：{exc}") from exc
+    preview = trim_text(extracted, 240).replace("\n", " ")
+    if last_error is not None:
+        raise RuntimeError(f"AI 返回 JSON 解析失败：{last_error}；原文片段：{preview}") from last_error
+    raise RuntimeError(f"AI 返回 JSON 解析失败；原文片段：{preview}")
 
 
 def store_analysis(session_id: str, request_text: str, result_json: dict, raw_text: str) -> dict:

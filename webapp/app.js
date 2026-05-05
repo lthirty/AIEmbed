@@ -175,7 +175,7 @@ function updateApiKeyStatus(saved) {
 function setCurrentView(view) {
   state.currentView = view;
   const titles = {
-    analysis: ["分析中心", "按“资料导入 -> 问题描述 -> AI 分析 -> 人工确认”推进定位。"],
+    analysis: ["分析中心", "按“现象 -> 分层分析 -> 验证方法 -> 根因 -> 解决方案 -> 经验总结”推进定位。"],
     library: ["案例库", "查看、搜索、复用历史经验和外部资源。"],
   };
   const [title, subtitle] = titles[view] || titles.analysis;
@@ -510,10 +510,12 @@ function hasEvidenceReady() {
 function buildDefaultAnalysisPrompt() {
   const lines = [
     "请基于当前会话里的资料、问题描述、测试报告、图片和日志进行结构化分析。",
-    "先完成：01 现象。",
-    "再完成：02-03 分层分析与验证方法。",
+    "先完成：01 现象；再完成：02-03 分层分析与验证方法。",
+    "分析顺序默认按：硬件 -> 接口 -> 驱动 -> 系统 -> 应用。",
+    "请优先说明触发条件、影响范围、复现频率，以及当前证据能支持到哪一层。",
     "04 根因、05 解决方案、06 经验总结先留空，等待人工定位后再补。",
-    "02-03 每条请尽量拆分为：分类、责任人、原因分析、验证方法、验证结果。",
+    "02-03 每条请尽量拆分为：分类、责任人、原因分析、判断依据、验证方法、验证结果。",
+    "没有证据的内容不要补满，直接写“暂无分析结果”或“待验证假设”。",
   ];
   return lines.join("\n");
 }
