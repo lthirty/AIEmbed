@@ -17,6 +17,8 @@ namespace {
 // v0.18.0 - Project-side workbench converts analysis rows into table form and improves compact evidence display; firmware behavior unchanged
 // v0.18.1 - Project-side workbench converts result areas to real HTML tables and refines the merged analysis table layout; firmware behavior unchanged
 // v0.19.0 - Project-side workbench restores serial log capture in section B, adds attachment browsing and previews, and auto-saves row edits; firmware behavior unchanged
+// v0.20.0 - Project-side workbench adds stronger button feedback and removes mandatory input gating for section B; firmware behavior unchanged
+// v0.20.1 - Project-side workbench pins Awesome-Embedded in the library and adds a direct GitHub entry point; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

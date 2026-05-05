@@ -477,16 +477,7 @@ function buildDefaultAnalysisPrompt() {
 
 function validateAnalysisPrerequisites() {
   requireSession();
-  const issues = [];
-  if (!hasEvidenceReady()) issues.push("还没有任何资料或附件，请先完成资料导入。");
-  const hasProblemEvidence = (state.activeSessionDetail?.evidence || []).some((item) => item.kind === "imported_info");
-  if (!hasProblemEvidence) issues.push("还没有导入问题描述、测试报告、图片或日志。");
-  if (issues.length) {
-    state.lastMissingInfo = issues;
-    elements.analysisStatus.textContent = issues.join(" ");
-    elements.analysisStatus.classList.add("error");
-    throw new Error(issues.join("\n"));
-  }
+  state.lastMissingInfo = [];
 }
 
 async function suggestMissingInfo() {
@@ -1231,8 +1222,14 @@ function renderKnowledge() {
     elements.knowledgeDetail.innerHTML = '<p class="helper">从当前会话生成一条案例后，这里会显示详情。</p>';
     return;
   }
+  const orderedKnowledge = [...state.knowledge].sort((a, b) => {
+    const aPinned = /Awesome-Embedded/i.test(a.title || "") ? 1 : 0;
+    const bPinned = /Awesome-Embedded/i.test(b.title || "") ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned;
+    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""), "zh-CN");
+  });
   const tagCounter = new Map();
-  state.knowledge.forEach((item) => {
+  orderedKnowledge.forEach((item) => {
     (item.tags || []).forEach((tag) => {
       const key = String(tag || "").trim();
       if (!key) return;
@@ -1252,20 +1249,35 @@ function renderKnowledge() {
       });
       elements.knowledgeTagCloud.appendChild(button);
     });
-  state.knowledge.forEach((item) => {
+  orderedKnowledge.forEach((item) => {
+    const githubLink = Array.isArray(item.relatedCases)
+      ? item.relatedCases.find((entry) => entry && typeof entry === "object" && /github/i.test(entry.url || ""))
+      : null;
     const article = document.createElement("article");
     article.className = `list-item compact-row selectable ${state.selectedKnowledgeId === item.id ? "active" : ""}`;
     article.innerHTML = `
-      <strong>${item.title}</strong>
-      <span class="item-meta">${(item.tags || []).join(", ") || "无标签"} · ${item.updatedAt || ""}</span>
+      <div class="knowledge-row-main">
+        <strong>${item.title}</strong>
+        <span class="item-meta">${(item.tags || []).join(", ") || "无标签"}</span>
+      </div>
     `;
     article.addEventListener("click", () => {
       state.selectedKnowledgeId = item.id;
       renderKnowledge();
     });
+    if (githubLink?.url) {
+      const openLink = document.createElement("a");
+      openLink.className = "evidence-preview-link";
+      openLink.href = githubLink.url;
+      openLink.target = "_blank";
+      openLink.rel = "noopener noreferrer";
+      openLink.textContent = "打开 GitHub";
+      openLink.addEventListener("click", (event) => event.stopPropagation());
+      article.appendChild(openLink);
+    }
     elements.knowledgeList.appendChild(article);
   });
-  const detail = state.knowledge.find((item) => item.id === state.selectedKnowledgeId) || state.knowledge[0];
+  const detail = orderedKnowledge.find((item) => item.id === state.selectedKnowledgeId) || orderedKnowledge[0];
   elements.knowledgeDetail.innerHTML = "";
   elements.knowledgeDetail.appendChild(createListSection("标题 / 问题描述", [detail.title]));
   elements.knowledgeDetail.appendChild(createListSection("根因", [detail.rootCause || "无"]));

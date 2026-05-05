@@ -141,7 +141,7 @@
               <label>问题描述<textarea id="info-content" rows="6" placeholder="描述环境、复现步骤、异常现象，以及你当前最想定位的问题。这里也可以直接粘贴测试报告摘要或串口日志。"></textarea></label>
               <label>附件<input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
               <button id="save-info-btn" type="button">导入问题信息</button>
-              <p id="info-result" class="helper">这里可导入测试报告、图片、日志或补充问题说明。</p>
+              <p id="info-result" class="helper">这里可导入测试报告、图片、日志或补充问题说明。该栏内容不是必填项。</p>
               <div class="serial-capture-card">
                 <div class="panel-head compact-head">
                   <h5>串口 Log 抓取</h5>
@@ -174,7 +174,7 @@
               <button id="suggest-missing-btn" type="button">检测缺失信息</button>
               <button id="analyze-btn" type="button">开始分析</button>
             </div>
-            <p id="analysis-status" class="helper">请先导入资料和问题信息，再开始分析。</p>
+            <p id="analysis-status" class="helper">资料和问题信息都不是必填项；缺失内容会在分析结果里作为待补充信息提示。</p>
             <section class="steps-box">
               <span class="role">分析流程</span>
               <div id="workflow-steps" class="workflow-steps workflow-inline"></div>

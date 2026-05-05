@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.19.0"
+APP_VERSION = "v0.20.1"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1216,16 +1216,84 @@ def suggest_test_cases_for_session(session_payload: dict) -> list[dict]:
 
 def detect_missing_info_for_session(session_payload: dict) -> list[str]:
     missing = []
-    if not (session_payload.get("issueType") or "").strip():
-        missing.append("缺少问题类型，请先归类为 UART / I2C / WIFI / POWER 等。")
-    if not (session_payload.get("symptom") or "").strip():
-        missing.append("缺少问题现象描述，请补充预期、实际和触发条件。")
     evidence = session_payload.get("evidence", [])
+    if not any(item.get("kind") == "imported_info" for item in evidence):
+        missing.append("B. 问题描述 / 测试报告 / 图片 / 日志 栏还没有任何内容，请至少补充一项后再分析。")
     if not any(item.get("kind") == "serial_log" for item in evidence):
         missing.append("当前没有串口日志，建议先抓一段完整 log。")
     if not any(item.get("kind") in {"material", "imported_info"} for item in evidence):
         missing.append("当前没有客户资料或导入信息，建议至少补一份问题说明。")
     return missing
+
+
+DEFAULT_ANALYSIS_DIMENSIONS = ["硬件", "软件", "固件", "OS", "器件", "生产", "工艺"]
+
+
+def normalize_layered_validation_rows(result_json: dict) -> dict:
+    raw_rows = result_json.get("layered_validation_rows")
+    normalized_rows: list[dict] = []
+
+    if isinstance(raw_rows, list):
+        for row in raw_rows:
+            if not isinstance(row, dict):
+                continue
+            normalized_rows.append(
+                {
+                    "category": str(row.get("category") or "").strip(),
+                    "owner": str(row.get("owner") or "").strip() or "待定",
+                    "reason": str(row.get("reason") or "").strip(),
+                    "method": str(row.get("method") or "").strip(),
+                    "result": str(row.get("result") or "").strip(),
+                }
+            )
+
+    if not normalized_rows:
+        layered = result_json.get("layered_analysis") or []
+        validations = result_json.get("validation_steps") or []
+        for index, category in enumerate(DEFAULT_ANALYSIS_DIMENSIONS):
+            layered_item = layered[index] if isinstance(layered, list) and index < len(layered) and isinstance(layered[index], dict) else {}
+            validation_item = validations[index] if isinstance(validations, list) and index < len(validations) and isinstance(validations[index], dict) else {}
+            reason_text = str(layered_item.get("judgement") or "").strip()
+            why_text = str(layered_item.get("why") or "").strip()
+            method_text = str(validation_item.get("instructions") or validation_item.get("goal") or "").strip()
+            result_text = str(validation_item.get("expected_result") or "").strip()
+            normalized_rows.append(
+                {
+                    "category": category,
+                    "owner": "待定",
+                    "reason": "；".join([item for item in [reason_text, why_text] if item]) or "暂无分析结果",
+                    "method": method_text or "暂无分析结果",
+                    "result": result_text or "暂无分析结果",
+                }
+            )
+
+    existing_categories = {row.get("category", "") for row in normalized_rows if row.get("category")}
+    for category in DEFAULT_ANALYSIS_DIMENSIONS:
+        if category not in existing_categories:
+            normalized_rows.append(
+                {
+                    "category": category,
+                    "owner": "待定",
+                    "reason": "暂无分析结果",
+                    "method": "暂无分析结果",
+                    "result": "暂无分析结果",
+                }
+            )
+
+    for row in normalized_rows:
+        if not row.get("category"):
+            row["category"] = "未分类"
+        if not row.get("owner"):
+            row["owner"] = "待定"
+        if not row.get("reason"):
+            row["reason"] = "暂无分析结果"
+        if not row.get("method"):
+            row["method"] = "暂无分析结果"
+        if not row.get("result"):
+            row["result"] = "暂无分析结果"
+
+    result_json["layered_validation_rows"] = normalized_rows
+    return result_json
 
 
 def create_fail_session_from_test_run(base_session: dict, test_case: dict, report: dict) -> dict:
