@@ -575,7 +575,11 @@ button:disabled {
 }
 
 .serial-live-output {
-  min-height: calc(1.55em * 10 + 28px);
+  height: 240px;
+  min-height: 240px;
+  max-height: 240px;
+  overflow-y: auto;
+  resize: none;
   font: 13px/1.55 Consolas, "Courier New", monospace;
 }
 

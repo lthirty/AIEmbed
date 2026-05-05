@@ -27,6 +27,7 @@ namespace {
 // v0.20.7 - Project-side workbench fixes library tag button contrast and removes legacy layered category options from the classification dropdown; firmware behavior unchanged
 // v0.20.8 - Project-side workbench reduces list-section content fields to single-line height by default and constrains the knowledge list to a 3-item scroll window; firmware behavior unchanged
 // v0.20.9 - Project-side workbench constrains history sessions to a 3-item scroll window and refreshes live serial log output after each session-detail poll; firmware behavior unchanged
+// v0.20.10 - Project-side workbench fixes the serial log textbox to a fixed-height scroll area so the page layout stays stable during continuous capture; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";
