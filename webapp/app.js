@@ -86,12 +86,13 @@ const state = {
   serialStatus: null,
   serialPollTimer: null,
   mergedColumnWidths: {
-    category: 160,
-    owner: 140,
-    reason: 360,
-    method: 320,
-    result: 240,
-    actions: 110,
+    category: 120,
+    owner: 120,
+    reason: 240,
+    basis: 240,
+    method: 240,
+    result: 180,
+    actions: 180,
   },
 };
 
@@ -105,6 +106,28 @@ const workflowTemplate = [
 let workflowState = [];
 const AUTO_SESSION_BOOTSTRAP_KEY = "ai-workbench-auto-session-v1";
 const defaultAnalysisDimensions = ["硬件", "软件", "固件", "OS", "器件", "生产", "工艺"];
+const categoryAliasMap = {
+  hardware: "硬件",
+  hw: "硬件",
+  software: "软件",
+  sw: "软件",
+  firmware: "固件",
+  fw: "固件",
+  os: "OS",
+  rtos: "OS",
+  device: "器件",
+  component: "器件",
+  production: "生产",
+  manufacturing: "生产",
+  process: "工艺",
+};
+
+function normalizeCategoryLabel(value) {
+  const text = String(value || "").trim();
+  if (["暂无分析结果", "无", "N/A", "n/a", "-"].includes(text)) return "";
+  const lowered = text.toLowerCase();
+  return categoryAliasMap[lowered] || text;
+}
 
 function showGenericError(error) {
   console.error(error);
@@ -582,23 +605,21 @@ function normalizeListItems(items, fallbackText = "") {
 function buildMergedRows(result) {
   const fromRows = Array.isArray(result.layered_validation_rows) ? result.layered_validation_rows : [];
   if (fromRows.length) {
-    const normalized = [...fromRows];
+    const normalized = fromRows.map((row) => ({
+      category: normalizeCategoryLabel(row?.category),
+      owner: String(row?.owner || "").trim() || "待定",
+      reason: String(row?.reason || "").trim() || "暂无分析结果",
+      basis: String(row?.basis || "").trim() || "暂无分析结果",
+      method: String(row?.method || "").trim() || "暂无分析结果",
+      result: String(row?.result || "").trim() || "暂无分析结果",
+    }));
     const existing = new Set(normalized.map((row) => String(row?.category || "").trim()).filter(Boolean));
     defaultAnalysisDimensions.forEach((category) => {
       if (!existing.has(category)) {
-        normalized.push({ category, owner: "待定", reason: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果" });
+        normalized.push({ category, owner: "待定", reason: "暂无分析结果", basis: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果" });
       }
     });
-    const ordered = [];
-    const extras = [];
-    defaultAnalysisDimensions.forEach((category) => {
-      const found = normalized.find((row) => String(row?.category || "").trim() === category);
-      if (found) ordered.push(found);
-    });
-    normalized.forEach((row) => {
-      if (!defaultAnalysisDimensions.includes(String(row?.category || "").trim())) extras.push(row);
-    });
-    return [...ordered, ...extras];
+    return normalized;
   }
   const layered = Array.isArray(result.layered_analysis) ? result.layered_analysis : [];
   const validations = Array.isArray(result.validation_steps) ? result.validation_steps : [];
@@ -609,9 +630,10 @@ function buildMergedRows(result) {
     const validation = validations[index] || {};
     const fallbackCategory = defaultAnalysisDimensions[index] || "";
     rows.push({
-      category: layer.layer || fallbackCategory,
-      owner: "",
+      category: normalizeCategoryLabel(layer.layer) || fallbackCategory,
+      owner: "待定",
       reason: [layer.judgement || "", layer.why || ""].filter(Boolean).join("：") || "暂无分析结果",
+      basis: layer.why || "暂无分析结果",
       method: validation.instructions || validation.goal || "暂无分析结果",
       result: validation.expected_result || "暂无分析结果",
     });
@@ -639,7 +661,7 @@ function syncAnalysisDraftToState() {
   result.phenomenon_summary = result.phenomenon_items.filter(Boolean).join("\n");
   result.layered_validation_rows = collectMergedRows();
   result.layered_analysis_summary = result.layered_validation_rows.map((row) => row.reason).filter(Boolean).join("\n");
-  result.validation_summary = result.layered_validation_rows.map((row) => `${row.method}${row.result ? ` -> ${row.result}` : ""}${row.owner ? ` @ ${row.owner}` : ""}`).filter(Boolean).join("\n");
+  result.validation_summary = result.layered_validation_rows.map((row) => `${row.basis ? `[${row.basis}] ` : ""}${row.method}${row.result ? ` -> ${row.result}` : ""}${row.owner ? ` @ ${row.owner}` : ""}`).filter(Boolean).join("\n");
   result.root_cause_items = collectListField("rootCause");
   result.root_cause_summary = result.root_cause_items.filter(Boolean).join("\n");
   result.solution_items = collectListField("solution");
@@ -819,7 +841,8 @@ function createMergedSection(rows) {
     onAdd: () => {
       if (!state.latestAnalysis) return;
       const result = state.latestAnalysis.result;
-      const nextRows = [...buildMergedRows(result), { category: "", owner: "", reason: "", method: "", result: "" }];
+      syncAnalysisDraftToState();
+      const nextRows = [...buildMergedRows(result), { category: "", owner: "待定", reason: "", basis: "", method: "", result: "" }];
       result.layered_validation_rows = nextRows;
       state.rowEditState[rowEditKey("layeredValidation", nextRows.length - 1)] = true;
       renderReadableAnalysis(state.latestAnalysis);
@@ -834,6 +857,7 @@ function createMergedSection(rows) {
     ["category", "分类"],
     ["owner", "责任人"],
     ["reason", "原因分析"],
+    ["basis", "判断依据"],
     ["method", "验证方法"],
     ["result", "验证结果"],
     ["actions", "操作"],
@@ -858,15 +882,15 @@ function createMergedSection(rows) {
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
   const values = [...rows];
-  while (values.length < 2) values.push({ category: "", owner: "", reason: "", method: "", result: "" });
-  const builtinCategories = ["", "硬件", "软件", "固件", "OS"];
+  if (!values.length) values.push({ category: "", owner: "待定", reason: "", basis: "", method: "", result: "" });
+  const builtinCategories = ["", ...defaultAnalysisDimensions];
   values.forEach((row, index) => {
     const editable = isRowEditing("layeredValidation", index);
     const tr = document.createElement("tr");
     const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
     const categorySelect = document.createElement("select");
-    const availableCategories = [...new Set([...builtinCategories, ...buildMergedRows(state.latestAnalysis?.result || {}).map((item) => item.category).filter(Boolean)])];
+    const availableCategories = [...new Set([...builtinCategories, ...buildMergedRows(state.latestAnalysis?.result || {}).map((item) => normalizeCategoryLabel(item.category)).filter(Boolean)])];
     availableCategories.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
@@ -883,14 +907,14 @@ function createMergedSection(rows) {
     categorySelect.dataset.layeredField = "category";
     categorySelect.addEventListener("change", () => {
       if (categorySelect.value !== "__custom__") return;
-      const customValue = window.prompt("输入自定义分类名称", row.category || "");
-      if (customValue && customValue.trim()) {
-        const nextValue = customValue.trim();
-        const option = document.createElement("option");
-        option.value = nextValue;
-        option.textContent = nextValue;
-        categorySelect.insertBefore(option, customOption);
-        categorySelect.value = nextValue;
+        const customValue = window.prompt("输入自定义分类名称", row.category || "");
+        if (customValue && customValue.trim()) {
+          const nextValue = normalizeCategoryLabel(customValue.trim()) || customValue.trim();
+          const option = document.createElement("option");
+          option.value = nextValue;
+          option.textContent = nextValue;
+          categorySelect.insertBefore(option, customOption);
+          categorySelect.value = nextValue;
       } else {
         categorySelect.value = row.category || "";
       }
@@ -898,16 +922,20 @@ function createMergedSection(rows) {
     categoryCell.appendChild(categorySelect);
     tr.appendChild(categoryCell);
 
-    ["owner", "reason", "method", "result"].forEach((field) => {
+    ["owner", "reason", "basis", "method", "result"].forEach((field) => {
       const td = document.createElement("td");
-      const textarea = document.createElement("textarea");
-      textarea.rows = 3;
-      textarea.value = row[field] || "";
-      textarea.dataset.layeredRow = String(index);
-      textarea.dataset.layeredField = field;
-      textarea.readOnly = !editable;
-      textarea.className = "merged-analysis-textarea";
-      td.appendChild(textarea);
+      const control = document.createElement(field === "owner" ? "input" : "textarea");
+      if (field === "owner") {
+        control.type = "text";
+      } else {
+        control.rows = field === "reason" || field === "basis" ? 3 : 2;
+      }
+      control.value = row[field] || "";
+      control.dataset.layeredRow = String(index);
+      control.dataset.layeredField = field;
+      control.readOnly = !editable;
+      control.className = field === "owner" ? "merged-analysis-input" : "merged-analysis-textarea";
+      td.appendChild(control);
       tr.appendChild(td);
     });
 
@@ -919,6 +947,18 @@ function createMergedSection(rows) {
     editBtn.className = "secondary-button";
     editBtn.textContent = editable ? "完成" : "编辑";
     editBtn.addEventListener("click", () => toggleRowEdit("layeredValidation", index).catch(showGenericError));
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "secondary-button";
+    upBtn.textContent = "上移";
+    upBtn.disabled = index === 0;
+    upBtn.addEventListener("click", () => moveMergedRow(index, -1));
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "secondary-button";
+    downBtn.textContent = "下移";
+    downBtn.disabled = index === values.length - 1;
+    downBtn.addEventListener("click", () => moveMergedRow(index, 1));
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "danger-button";
@@ -932,6 +972,8 @@ function createMergedSection(rows) {
       delete state.rowEditState[rowEditKey("layeredValidation", index)];
       renderReadableAnalysis(state.latestAnalysis);
     });
+    actions.appendChild(upBtn);
+    actions.appendChild(downBtn);
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
     actionCell.appendChild(actions);
@@ -955,13 +997,25 @@ function collectMergedRows() {
   Array.from(document.querySelectorAll("[data-layered-row]")).forEach((node) => {
     const rowIndex = Number(node.dataset.layeredRow);
     const field = node.dataset.layeredField;
-    if (!map.has(rowIndex)) map.set(rowIndex, { category: "", owner: "", reason: "", method: "", result: "" });
+    if (!map.has(rowIndex)) map.set(rowIndex, { category: "", owner: "", reason: "", basis: "", method: "", result: "" });
     map.get(rowIndex)[field] = node.value.trim();
   });
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([, value]) => ({ category: value.category, owner: value.owner, reason: value.reason, method: value.method, result: value.result }))
+    .map(([, value]) => ({ category: value.category, owner: value.owner, reason: value.reason, basis: value.basis, method: value.method, result: value.result }))
     .filter((row) => Object.values(row).some(Boolean));
+}
+
+function moveMergedRow(index, delta) {
+  if (!state.latestAnalysis) return;
+  syncAnalysisDraftToState();
+  const nextRows = [...buildMergedRows(state.latestAnalysis.result)];
+  const targetIndex = index + delta;
+  if (targetIndex < 0 || targetIndex >= nextRows.length) return;
+  const [moved] = nextRows.splice(index, 1);
+  nextRows.splice(targetIndex, 0, moved);
+  state.latestAnalysis.result.layered_validation_rows = nextRows;
+  renderReadableAnalysis(state.latestAnalysis);
 }
 
 function createBlankSimpleSection(order, title, minRows = 2) {
@@ -1215,7 +1269,7 @@ function formatAnalysisForCompare(analysis) {
   const wrapper = document.createElement("article");
   wrapper.className = "compare-card";
   wrapper.appendChild(createListSection("现象", normalizeListItems(analysis.result?.phenomenon_items, analysis.result?.phenomenon_summary || "")));
-  wrapper.appendChild(createListSection("分层分析与验证", (analysis.result?.layered_validation_rows || []).map((row) => `${row.reason || "无原因"} | ${row.method || "无方法"} | ${row.result || "无结果"} | ${row.owner || "未分配"}`)));
+  wrapper.appendChild(createListSection("分层分析与验证", (analysis.result?.layered_validation_rows || []).map((row) => `${row.category || "未分类"} | ${row.reason || "无原因"} | 依据: ${row.basis || "无"} | ${row.method || "无方法"} | ${row.result || "无结果"} | ${row.owner || "未分配"}`)));
   wrapper.appendChild(createListSection("根因", normalizeListItems(analysis.result?.root_cause_items, analysis.result?.root_cause_summary || "")));
   return wrapper;
 }
@@ -1318,6 +1372,7 @@ function createReadonlyMergedSection(rows) {
         <th>分类</th>
         <th>责任人</th>
         <th>原因分析</th>
+        <th>判断依据</th>
         <th>验证方法</th>
         <th>验证结果</th>
       </tr>
@@ -1326,7 +1381,7 @@ function createReadonlyMergedSection(rows) {
   const tbody = document.createElement("tbody");
   (rows || []).forEach((row) => {
     const tr = document.createElement("tr");
-    ["category", "owner", "reason", "method", "result"].forEach((field) => {
+    ["category", "owner", "reason", "basis", "method", "result"].forEach((field) => {
       const td = document.createElement("td");
       td.className = "merged-analysis-cell readonly-cell";
       td.textContent = row?.[field] || "";

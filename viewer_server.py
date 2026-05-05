@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.20.4"
+APP_VERSION = "v0.20.6"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -38,6 +38,7 @@ DEFAULT_PROVIDER_CONFIG = {
 }
 MAX_LOG_ENTRIES = 300
 MAX_PROMPT_EVIDENCE_CHARS = 12000
+AI_PROVIDER_TIMEOUT_SECONDS = 180
 REQUEST_LOGS: list[dict] = []
 SERIAL_CAPTURE_STATE = {
     "running": False,
@@ -366,7 +367,7 @@ def call_provider_text(prompt: str, provider_config: dict, request_id: str | Non
 
     try:
         started = time.time()
-        with urllib.request.urlopen(request, timeout=90) as response:
+        with urllib.request.urlopen(request, timeout=AI_PROVIDER_TIMEOUT_SECONDS) as response:
             response_payload = json.loads(response.read().decode("utf-8"))
             add_log(
                 "info",
@@ -399,8 +400,8 @@ def call_provider_text(prompt: str, provider_config: dict, request_id: str | Non
         add_log("error", "provider", "AI provider URL error", {"reason": str(exc.reason), "providerName": provider_name}, request_id)
         raise RuntimeError(f"Provider request failed: {exc.reason}") from exc
     except socket.timeout as exc:
-        add_log("error", "provider", "AI provider timed out", {"timeoutSeconds": 90, "providerName": provider_name}, request_id)
-        raise RuntimeError("AI provider timed out after 90 seconds") from exc
+        add_log("error", "provider", "AI provider timed out", {"timeoutSeconds": AI_PROVIDER_TIMEOUT_SECONDS, "providerName": provider_name}, request_id)
+        raise RuntimeError(f"AI provider timed out after {AI_PROVIDER_TIMEOUT_SECONDS} seconds") from exc
 
     answer = parse_response_text(response_payload, api_mode)
     if not answer:
@@ -1225,6 +1226,31 @@ def detect_missing_info_for_session(session_payload: dict) -> list[str]:
 
 
 DEFAULT_ANALYSIS_DIMENSIONS = ["硬件", "软件", "固件", "OS", "器件", "生产", "工艺"]
+CATEGORY_ALIASES = {
+    "hardware": "硬件",
+    "hw": "硬件",
+    "software": "软件",
+    "sw": "软件",
+    "firmware": "固件",
+    "fw": "固件",
+    "os": "OS",
+    "rtos": "OS",
+    "device": "器件",
+    "component": "器件",
+    "production": "生产",
+    "manufacturing": "生产",
+    "process": "工艺",
+}
+
+
+def normalize_category_name(value: str) -> str:
+    text = str(value or "").strip()
+    if text in {"暂无分析结果", "无", "N/A", "n/a", "-"}:
+        return ""
+    lowered = text.lower()
+    if lowered in CATEGORY_ALIASES:
+        return CATEGORY_ALIASES[lowered]
+    return text
 
 
 def normalize_layered_validation_rows(result_json: dict) -> dict:
@@ -1240,6 +1266,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "category": str(row.get("category") or "").strip(),
                     "owner": str(row.get("owner") or "").strip() or "待定",
                     "reason": str(row.get("reason") or "").strip(),
+                    "basis": str(row.get("basis") or "").strip(),
                     "method": str(row.get("method") or "").strip(),
                     "result": str(row.get("result") or "").strip(),
                 }
@@ -1260,10 +1287,26 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "category": category,
                     "owner": "待定",
                     "reason": "；".join([item for item in [reason_text, why_text] if item]) or "暂无分析结果",
+                    "basis": why_text or "暂无分析结果",
                     "method": method_text or "暂无分析结果",
                     "result": result_text or "暂无分析结果",
                 }
             )
+
+    for row in normalized_rows:
+        row["category"] = normalize_category_name(row.get("category", ""))
+        if not row.get("category"):
+            row["category"] = "未分类"
+        if not row.get("owner"):
+            row["owner"] = "待定"
+        if not row.get("reason"):
+            row["reason"] = "暂无分析结果"
+        if not row.get("basis"):
+            row["basis"] = "暂无分析结果"
+        if not row.get("method"):
+            row["method"] = "暂无分析结果"
+        if not row.get("result"):
+            row["result"] = "暂无分析结果"
 
     existing_categories = {row.get("category", "") for row in normalized_rows if row.get("category")}
     for category in DEFAULT_ANALYSIS_DIMENSIONS:
@@ -1273,34 +1316,64 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "category": category,
                     "owner": "待定",
                     "reason": "暂无分析结果",
+                    "basis": "暂无分析结果",
                     "method": "暂无分析结果",
                     "result": "暂无分析结果",
                 }
             )
 
-    for row in normalized_rows:
-        if not row.get("category"):
-            row["category"] = "未分类"
-        if not row.get("owner"):
-            row["owner"] = "待定"
-        if not row.get("reason"):
-            row["reason"] = "暂无分析结果"
-        if not row.get("method"):
-            row["method"] = "暂无分析结果"
-        if not row.get("result"):
-            row["result"] = "暂无分析结果"
-
-    ordered_rows: list[dict] = []
-    extra_rows: list[dict] = []
-    category_map = {row["category"]: row for row in normalized_rows}
+    grouped_rows: list[dict] = []
     for category in DEFAULT_ANALYSIS_DIMENSIONS:
-        if category in category_map:
-            ordered_rows.append(category_map[category])
-    for row in normalized_rows:
-        if row["category"] not in DEFAULT_ANALYSIS_DIMENSIONS:
-            extra_rows.append(row)
+        grouped_rows.extend([row for row in normalized_rows if row["category"] == category])
+    grouped_rows.extend([row for row in normalized_rows if row["category"] not in DEFAULT_ANALYSIS_DIMENSIONS])
 
-    result_json["layered_validation_rows"] = ordered_rows + extra_rows
+    result_json["layered_validation_rows"] = grouped_rows
+    return result_json
+
+
+def enforce_evidence_basis(result_json: dict, session_payload: dict) -> dict:
+    evidence_titles = [str(item.get("title") or "").strip() for item in session_payload.get("evidence", []) if isinstance(item, dict)]
+    knowledge_titles = [str(item.get("title") or "").strip() for item in session_payload.get("knowledge", []) if isinstance(item, dict)]
+    markers = {
+        "串口日志",
+        "资料",
+        "导入信息",
+        "附件",
+        "案例库",
+        "知识库",
+        "历史会话",
+        "图片",
+        "测试报告",
+        "规格书",
+        "datasheet",
+        "spec",
+        "log",
+    }
+    markers.update([item for item in evidence_titles + knowledge_titles if item])
+    lowered_markers = [marker.lower() for marker in markers if marker]
+
+    sanitized_rows: list[dict] = []
+    for row in result_json.get("layered_validation_rows", []) or []:
+        if not isinstance(row, dict):
+            continue
+        basis_text = str(row.get("basis") or "").strip()
+        basis_lower = basis_text.lower()
+        has_marker = basis_text == "暂无分析结果" or any(marker in basis_lower for marker in lowered_markers)
+        if not has_marker:
+            sanitized_rows.append(
+                {
+                    "category": row.get("category", "未分类"),
+                    "owner": row.get("owner", "待定") or "待定",
+                    "reason": "暂无分析结果",
+                    "basis": "暂无分析结果",
+                    "method": "暂无分析结果",
+                    "result": "暂无分析结果",
+                }
+            )
+            continue
+        sanitized_rows.append(row)
+
+    result_json["layered_validation_rows"] = sanitized_rows
     return result_json
 
 
@@ -1946,7 +2019,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
     schema = {
         "phenomenon_summary": "",
         "phenomenon_items": [""],
-        "layered_validation_rows": [{"category": "", "owner": "", "reason": "", "method": "", "result": ""}],
+        "layered_validation_rows": [{"category": "", "owner": "", "reason": "", "basis": "", "method": "", "result": ""}],
         "layered_analysis": [{"layer": "", "judgement": "", "why": ""}],
         "evidence_used": [{"evidence_title": "", "kind": "", "why_it_matters": ""}],
         "possible_causes": [{"label": "", "confidence": 0.0, "reasoning": "", "required_next_check": ""}],
@@ -1985,9 +2058,12 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "本轮先只完成现象，以及“分层分析+验证方法”的合并条目。"
         "根因、解决方案、经验总结必须先留空，等待人工验证后再填写。"
         "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
-        "合并列表中的每一条请显式给出 category、owner、reason、method、result 五个字段。"
+        "合并列表中的每一条请显式给出 category、owner、reason、basis、method、result 六个字段。"
         "请优先从多个维度进行可能性分析，至少覆盖：硬件、软件、固件、OS、器件、生产、工艺。"
         "如果某个维度暂时没有足够结论，也必须在对应条目里写“暂无分析结果”。"
+        "严禁为了填满表格而编造事实。所有判断都必须能回溯到用户提供的资料、日志或案例库内容。"
+        "basis 字段必须直接写明依据来源，例如“串口日志：...”“资料：...”“案例库：...”或“暂无分析结果”。"
+        "如果当前证据不足以支持某一行，请把 reason、basis、method、result 写成“暂无分析结果”或明确缺少哪类证据。"
         "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
         "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
@@ -2101,6 +2177,7 @@ def run_session_analysis(session_id: str, request_text: str, device_ip: str, cap
     raw_text = call_provider_text(prompt, load_provider_config(), request_id)
     result_json = try_parse_analysis_json(raw_text)
     result_json = normalize_layered_validation_rows(result_json)
+    result_json = enforce_evidence_basis(result_json, session_payload)
     add_log("info", "analysis", "Structured analysis JSON parsed", {"keys": list(result_json.keys())}, request_id)
     return store_analysis(session_id, request_text, result_json, raw_text)
 
