@@ -500,6 +500,7 @@ async function loadSessionDetail(sessionId) {
   renderSessionList();
   renderEvidenceList();
   renderAnalyses(data.analyses || []);
+  renderSerialLiveOutput();
 }
 
 function hasEvidenceReady() {

@@ -814,6 +814,12 @@ button:disabled {
   border-radius: 10px;
 }
 
+#session-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 #knowledge-list {
   max-height: 420px;
   overflow-y: auto;
