@@ -921,14 +921,15 @@ button:disabled {
 
 .merged-analysis-table {
   width: 100%;
-  min-width: 1580px;
+  min-width: 1800px;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
-.merged-analysis-table col[data-col-key="category"] { width: var(--col-category, 120px); }
+.merged-analysis-table col[data-col-key="category"] { width: var(--col-category, 60px); }
 .merged-analysis-table col[data-col-key="subtype"] { width: var(--col-subtype, 160px); }
-.merged-analysis-table col[data-col-key="owner"] { width: var(--col-owner, 120px); }
+.merged-analysis-table col[data-col-key="owner"] { width: var(--col-owner, 60px); }
+.merged-analysis-table col[data-col-key="phenomenon"] { width: var(--col-phenomenon, 220px); }
 .merged-analysis-table col[data-col-key="reason"] { width: var(--col-reason, 240px); }
 .merged-analysis-table col[data-col-key="basis"] { width: var(--col-basis, 240px); }
 .merged-analysis-table col[data-col-key="method"] { width: var(--col-method, 240px); }
@@ -994,7 +995,8 @@ button:disabled {
   min-height: 56px;
   padding: 12px;
   line-height: 1.6;
-  resize: vertical;
+  resize: none;
+  overflow-y: auto;
 }
 
 .custom-category-input.hidden {

@@ -23,7 +23,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.22.4"
+APP_VERSION = "v0.22.6"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1557,6 +1557,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "category": str(row.get("category") or "").strip(),
                     "subtype": str(row.get("subtype") or "").strip(),
                     "owner": str(row.get("owner") or "").strip() or "待定",
+                    "phenomenon": str(row.get("phenomenon") or "").strip(),
                     "reason": str(row.get("reason") or "").strip(),
                     "basis": str(row.get("basis") or "").strip(),
                     "method": str(row.get("method") or "").strip(),
@@ -1579,6 +1580,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "category": category,
                     "subtype": "",
                     "owner": "待定",
+                    "phenomenon": "暂无分析结果",
                     "reason": "；".join([item for item in [reason_text, why_text] if item]) or "暂无分析结果",
                     "basis": why_text or "暂无分析结果",
                     "method": method_text or "暂无分析结果",
@@ -1592,6 +1594,8 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
             row["category"] = "未分类"
         if not row.get("owner"):
             row["owner"] = "待定"
+        if not row.get("phenomenon"):
+            row["phenomenon"] = "暂无分析结果"
         if not row.get("reason"):
             row["reason"] = "暂无分析结果"
         if not row.get("basis"):
@@ -1609,6 +1613,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "category": category,
                     "subtype": "",
                     "owner": "待定",
+                    "phenomenon": "暂无分析结果",
                     "reason": "暂无分析结果",
                     "basis": "暂无分析结果",
                     "method": "暂无分析结果",
@@ -1659,6 +1664,7 @@ def enforce_evidence_basis(result_json: dict, session_payload: dict) -> dict:
                     "category": row.get("category", "未分类"),
                     "owner": row.get("owner", "待定") or "待定",
                     "subtype": "",
+                    "phenomenon": row.get("phenomenon", "暂无分析结果") or "暂无分析结果",
                     "reason": "暂无分析结果",
                     "basis": "暂无分析结果",
                     "method": "暂无分析结果",
@@ -2391,7 +2397,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
     schema = {
         "phenomenon_summary": "",
         "phenomenon_items": [""],
-        "layered_validation_rows": [{"category": "", "subtype": "", "owner": "", "reason": "", "basis": "", "method": "", "result": ""}],
+        "layered_validation_rows": [{"category": "", "subtype": "", "owner": "", "phenomenon": "", "reason": "", "basis": "", "method": "", "result": ""}],
         "evidence_used": [{"evidence_title": "", "kind": "", "why_it_matters": ""}],
         "missing_information": [""],
         "priority": "P1",
