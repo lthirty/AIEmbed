@@ -37,6 +37,7 @@ namespace {
 // v0.22.5 - Project-side workbench auto-aligns the heights of all editable cells within the same 分析与验证 row for cleaner table readability; firmware behavior unchanged
 // v0.22.6 - Project-side workbench moves A/B empty-state hints inside each evidence box, narrows 分类/责任人 columns, and adds a 现象 column into 02 分析与验证 to close the analysis loop; firmware behavior unchanged
 // v0.22.8 - Project-side workbench seeds a selectable DeepSeek reasoning profile, keeps provider profiles persistent for later login, and adds a sidebar AI Q&A panel for quick provider checks; firmware behavior unchanged
+// v0.22.9 - Project-side workbench removes the standalone 01 现象 section, moves AI Q&A above 02 分析与验证, supports project-based session management, child validation rows, row-height adjustment, and unrestricted column shrinking; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

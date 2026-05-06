@@ -16,17 +16,15 @@ const elements = {
   providerSaveResult: document.getElementById("provider-save-result"),
   aiSettingsPanel: document.getElementById("ai-settings-panel"),
   aiValidationBadge: document.getElementById("ai-validation-badge"),
-  aiQaPanel: document.getElementById("ai-qa-panel"),
-  aiQaQuestion: document.getElementById("ai-qa-question"),
-  aiQaAskBtn: document.getElementById("ai-qa-ask-btn"),
-  aiQaStatus: document.getElementById("ai-qa-status"),
-  aiQaAnswer: document.getElementById("ai-qa-answer"),
   activeSessionLabel: document.getElementById("active-session-label"),
   pageTitle: document.getElementById("page-title"),
   pageSubtitle: document.getElementById("page-subtitle"),
   overviewCounts: document.getElementById("overview-counts"),
   sessionCount: document.getElementById("session-count"),
   sessionList: document.getElementById("session-list"),
+  projectSelect: document.getElementById("project-select"),
+  projectName: document.getElementById("project-name"),
+  createProjectBtn: document.getElementById("create-project-btn"),
   sessionTitle: document.getElementById("session-title"),
   sessionCustomer: document.getElementById("session-customer"),
   deviceModel: document.getElementById("device-model"),
@@ -112,6 +110,8 @@ const state = {
   currentView: "analysis",
   apiConfigured: false,
   overview: null,
+  projects: [],
+  activeProjectId: "",
   sessions: [],
   activeSessionId: "",
   activeSessionDetail: null,
@@ -371,10 +371,51 @@ async function loadOverview() {
   `).join("");
 }
 
+function renderProjectOptions() {
+  elements.projectSelect.innerHTML = "";
+  if (!state.projects.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "请先新建项目";
+    elements.projectSelect.appendChild(option);
+    return;
+  }
+  state.projects.forEach((project) => {
+    const option = document.createElement("option");
+    option.value = project.id;
+    option.textContent = project.name;
+    elements.projectSelect.appendChild(option);
+  });
+  elements.projectSelect.value = state.activeProjectId || state.projects[0]?.id || "";
+}
+
+async function loadProjects() {
+  const data = await apiGet("/api/projects");
+  state.projects = data.projects || [];
+  if (!state.projects.length) {
+    state.activeProjectId = "";
+  } else if (!state.activeProjectId || !state.projects.some((project) => project.id === state.activeProjectId)) {
+    state.activeProjectId = data.activeProjectId || state.projects[0].id;
+  }
+  renderProjectOptions();
+}
+
+async function createProject() {
+  const name = elements.projectName.value.trim();
+  if (!name) throw new Error("请先输入项目名称。");
+  const data = await apiPost("/api/projects", { name });
+  elements.projectName.value = "";
+  state.activeProjectId = data.project?.id || "";
+  await Promise.all([loadProjects(), loadSessions(), loadOverview()]);
+  await ensureAutoSessionOnEntry();
+  elements.analysisStatus.textContent = `项目已创建：${data.project?.name || name}`;
+  elements.analysisStatus.classList.remove("error");
+}
+
 function renderSessionMetaSummary() {
   const session = state.sessions.find((item) => item.id === state.activeSessionId);
   elements.activeSessionLabel.textContent = session
-    ? `${session.title} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"}`
+    ? `${session.projectName || "未选项目"} · ${session.title} · ${session.deviceModel || "未填型号"} · ${session.serialNumber || "未填序号"}`
     : "未选择";
 }
 
@@ -401,8 +442,13 @@ function renderSessionList() {
 }
 
 async function loadSessions() {
-  const data = await apiGet("/api/sessions");
+  const suffix = state.activeProjectId ? `?projectId=${encodeURIComponent(state.activeProjectId)}` : "";
+  const data = await apiGet(`/api/sessions${suffix}`);
   state.sessions = data.sessions || [];
+  if (state.activeSessionId && !state.sessions.some((session) => session.id === state.activeSessionId)) {
+    state.activeSessionId = "";
+    state.activeSessionDetail = null;
+  }
   if (!state.activeSessionId && state.sessions.length) {
     state.activeSessionId = state.sessions[0].id;
   }
@@ -412,12 +458,15 @@ async function loadSessions() {
     await loadSessionDetail(state.activeSessionId);
   } else {
     renderReadableAnalysis(null);
+    renderEvidenceList();
   }
 }
 
 async function createSession(options = {}) {
   const { title = "", silent = false } = options;
+  if (!state.activeProjectId) throw new Error("请先创建并选择一个项目。");
   const data = await apiPost("/api/sessions", {
+    projectId: state.activeProjectId,
     title: title || elements.sessionTitle.value.trim() || "客户调试会话",
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
@@ -439,6 +488,7 @@ async function createSession(options = {}) {
 
 async function ensureAutoSessionOnEntry() {
   if (sessionStorage.getItem(AUTO_SESSION_BOOTSTRAP_KEY) === "1") return;
+  if (!state.activeProjectId) return;
   sessionStorage.setItem(AUTO_SESSION_BOOTSTRAP_KEY, "1");
   const autoTitle = `新会话 ${new Date().toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")}`;
   await createSession({ title: autoTitle, silent: true });
@@ -449,6 +499,7 @@ async function ensureAutoSessionOnEntry() {
 async function saveSessionMeta() {
   requireSession();
   await apiPost(`/api/sessions/${state.activeSessionId}/meta`, {
+    projectId: state.activeProjectId,
     title: elements.sessionTitle.value.trim(),
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
@@ -499,22 +550,6 @@ async function saveProviderConfig() {
     await validateSavedProvider();
   } finally {
     elements.saveProviderBtn.disabled = false;
-  }
-}
-
-async function askStandaloneAiQuestion() {
-  const question = elements.aiQaQuestion.value.trim();
-  if (!question) throw new Error("请先输入要提问的内容。");
-  if (!state.apiConfigured) throw new Error("请先选择并验证可用的 AI 配置。");
-  elements.aiQaAskBtn.disabled = true;
-  elements.aiQaStatus.textContent = "正在向当前 AI 配置发送问答请求...";
-  elements.aiQaStatus.classList.remove("error");
-  try {
-    const data = await apiPost("/ai/chat", { question });
-    elements.aiQaAnswer.value = data.answer || "";
-    elements.aiQaStatus.textContent = `问答完成：${data.providerName || "当前 AI"} · ${data.model || "-"}`;
-  } finally {
-    elements.aiQaAskBtn.disabled = false;
   }
 }
 
@@ -657,6 +692,10 @@ function renderEvidenceList() {
 async function loadSessionDetail(sessionId) {
   const data = await apiGet(`/api/sessions/${sessionId}`);
   state.activeSessionDetail = data;
+  if (data.projectId) {
+    state.activeProjectId = data.projectId;
+    renderProjectOptions();
+  }
   const index = state.sessions.findIndex((item) => item.id === data.id);
   if (index >= 0) {
     state.sessions[index] = { ...state.sessions[index], ...data };
@@ -680,11 +719,12 @@ function hasEvidenceReady() {
 function buildDefaultAnalysisPrompt() {
   const lines = [
     "请只基于当前问题对应的新资料、问题描述、测试报告、图片和日志进行结构化分析，旧问题资料只能作为背景参考。",
-    "先完成：01 现象；再完成：分析与验证。",
+    "请直接完成：02 分析与验证，并把现象、原因分析、判断依据、验证方法、验证结果组织成表格行。",
     "分析顺序默认按：硬件 -> 接口 -> 驱动 -> 系统 -> 应用。",
     "请优先说明触发条件、影响范围、复现频率，以及当前证据能支持到哪一层。",
     "04 根因、05 解决方案、06 经验总结先留空，等待人工定位后再补。",
-    "02 分析与验证每条请尽量拆分为：分类、子类、责任人、原因分析、判断依据、验证方法、验证结果。",
+    "02 分析与验证每条请尽量拆分为：分类、子类、责任人、现象、原因分析、判断依据、验证方法、验证结果。",
+    "如果一个现象需要多个验证方法，请为每个验证方法单独创建一行，但要保持这些行对应同一个问题现象。",
     "没有证据的内容不要补满，直接写“暂无分析结果”或“待验证假设”。",
   ];
   return lines.join("\n");
@@ -791,11 +831,13 @@ function buildMergedRows(result) {
       basis: String(row?.basis || "").trim() || "暂无分析结果",
       method: String(row?.method || "").trim() || "暂无分析结果",
       result: String(row?.result || "").trim() || "暂无分析结果",
+      rowHeight: Number(row?.rowHeight || 0),
+      childLevel: Number(row?.childLevel || 0),
     }));
     const existing = new Set(normalized.map((row) => String(row?.category || "").trim()).filter(Boolean));
     defaultAnalysisDimensions.forEach((category) => {
       if (!existing.has(category)) {
-        normalized.push({ category, subtype: "", owner: "待定", phenomenon: phenomenonItems[normalized.length] || "暂无分析结果", reason: "暂无分析结果", basis: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果" });
+        normalized.push({ category, subtype: "", owner: "待定", phenomenon: phenomenonItems[normalized.length] || "暂无分析结果", reason: "暂无分析结果", basis: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果", rowHeight: 0, childLevel: 0 });
       }
     });
     return normalized;
@@ -817,6 +859,8 @@ function buildMergedRows(result) {
       basis: layer.why || "暂无分析结果",
       method: validation.instructions || validation.goal || "暂无分析结果",
       result: validation.expected_result || "暂无分析结果",
+      rowHeight: 0,
+      childLevel: 0,
     });
   }
   return rows;
@@ -838,9 +882,9 @@ function syncAnalysisDraftToState() {
   result.serial_number = document.getElementById("summary-serial-number")?.value || result.serial_number || "";
   result.priority = document.getElementById("summary-priority")?.value || result.priority || "P1";
   result.risk_level = document.getElementById("summary-risk-level")?.value || result.risk_level || "low";
-  result.phenomenon_items = collectListField("phenomenon");
-  result.phenomenon_summary = result.phenomenon_items.filter(Boolean).join("\n");
   result.layered_validation_rows = collectMergedRows();
+  result.phenomenon_items = result.layered_validation_rows.map((row) => String(row.phenomenon || "").trim()).filter(Boolean);
+  result.phenomenon_summary = result.phenomenon_items.filter(Boolean).join("\n");
   result.layered_analysis_summary = result.layered_validation_rows.map((row) => row.reason).filter(Boolean).join("\n");
   result.validation_summary = result.layered_validation_rows.map((row) => `${row.category || "未分类"}${row.subtype ? `/${row.subtype}` : ""}${row.phenomenon ? ` 现象:${row.phenomenon}` : ""} ${row.basis ? `[${row.basis}] ` : ""}${row.method}${row.result ? ` -> ${row.result}` : ""}${row.owner ? ` @ ${row.owner}` : ""}`).filter(Boolean).join("\n");
   result.root_cause_items = collectListField("rootCause");
@@ -1007,7 +1051,7 @@ function createResizeHandle(columnKey, element) {
     const startX = event.clientX;
     const startWidth = state.mergedColumnWidths[columnKey];
     const onMove = (moveEvent) => {
-      const next = Math.max(110, startWidth + moveEvent.clientX - startX);
+      const next = Math.max(1, startWidth + moveEvent.clientX - startX);
       state.mergedColumnWidths[columnKey] = next;
       applyMergedColumnWidths(element);
     };
@@ -1029,7 +1073,7 @@ function createHistoryResizeHandle(columnKey, element) {
     const startX = event.clientX;
     const startWidth = state.historyColumnWidths[columnKey];
     const onMove = (moveEvent) => {
-      const next = Math.max(80, startWidth + moveEvent.clientX - startX);
+      const next = Math.max(1, startWidth + moveEvent.clientX - startX);
       state.historyColumnWidths[columnKey] = next;
       applyHistoryColumnWidths(element);
     };
@@ -1048,6 +1092,7 @@ function syncMergedTableRowHeights(root = document) {
   rows.forEach((row) => {
     const controls = Array.from(row.querySelectorAll("textarea, input, select"));
     if (!controls.length) return;
+    const forcedHeight = Number(row.dataset.rowHeight || "0");
     controls.forEach((control) => {
       if (control instanceof HTMLTextAreaElement) {
         control.style.height = "auto";
@@ -1061,12 +1106,115 @@ function syncMergedTableRowHeights(root = document) {
         const minHeight = parseFloat(styles.minHeight || "0") || 0;
         return Math.max(control.scrollHeight || 0, control.getBoundingClientRect().height || 0, minHeight);
       }),
+      forcedHeight,
       48,
     );
     controls.forEach((control) => {
       control.style.height = `${Math.ceil(targetHeight)}px`;
     });
+    row.style.height = `${Math.ceil(targetHeight + 12)}px`;
   });
+}
+
+function getAiQaElements() {
+  return {
+    question: document.getElementById("analysis-ai-qa-question"),
+    askBtn: document.getElementById("analysis-ai-qa-ask-btn"),
+    status: document.getElementById("analysis-ai-qa-status"),
+    answer: document.getElementById("analysis-ai-qa-answer"),
+  };
+}
+
+async function askStandaloneAiQuestion() {
+  const qa = getAiQaElements();
+  const question = qa.question?.value.trim() || "";
+  if (!question) throw new Error("请先输入要提问的内容。");
+  if (!state.apiConfigured) throw new Error("请先选择并验证可用的 AI 配置。");
+  if (qa.askBtn) qa.askBtn.disabled = true;
+  if (qa.status) {
+    qa.status.textContent = "正在向当前 AI 配置发送问答请求...";
+    qa.status.classList.remove("error");
+  }
+  try {
+    const data = await apiPost("/ai/chat", { question });
+    if (qa.answer) qa.answer.value = data.answer || "";
+    if (qa.status) qa.status.textContent = `问答完成：${data.providerName || "当前 AI"} · ${data.model || "-"}`;
+  } finally {
+    if (qa.askBtn) qa.askBtn.disabled = false;
+  }
+}
+
+function createAiQaSection() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "analysis-qa-box";
+  wrapper.innerHTML = `
+    <div class="panel-head compact-head">
+      <h5>AI 问答</h5>
+      <span class="helper">使用当前 AI 配置做单独问答，不写入结构化分析</span>
+    </div>
+    <label>问题
+      <textarea id="analysis-ai-qa-question" rows="3" placeholder="例如：请解释为什么上拉电阻过大可能导致 I2C 上升沿变慢。"></textarea>
+    </label>
+    <div class="inline-actions">
+      <button id="analysis-ai-qa-ask-btn" type="button">发送问答</button>
+    </div>
+    <p id="analysis-ai-qa-status" class="helper">这里用于快速验证当前 AI 配置和做补充问答。</p>
+    <label>回答
+      <textarea id="analysis-ai-qa-answer" rows="6" readonly placeholder="这里会显示 AI 回答。"></textarea>
+    </label>
+  `;
+  wrapper.querySelector("#analysis-ai-qa-ask-btn")?.addEventListener("click", () => askStandaloneAiQuestion().catch(showGenericError));
+  return wrapper;
+}
+
+function getDefaultMergedRow(overrides = {}) {
+  return {
+    category: "",
+    subtype: "",
+    owner: "待定",
+    phenomenon: "",
+    reason: "",
+    basis: "",
+    method: "",
+    result: "",
+    rowHeight: 0,
+    childLevel: 0,
+    ...overrides,
+  };
+}
+
+function insertMergedChildRow(index) {
+  if (!state.latestAnalysis) return;
+  syncAnalysisDraftToState();
+  const nextRows = [...buildMergedRows(state.latestAnalysis.result)];
+  const base = nextRows[index] || getDefaultMergedRow();
+  const child = getDefaultMergedRow({
+    category: base.category,
+    subtype: base.subtype,
+    owner: base.owner,
+    phenomenon: base.phenomenon,
+    reason: base.reason,
+    basis: base.basis,
+    method: "",
+    result: "",
+    rowHeight: base.rowHeight || 0,
+    childLevel: 1,
+  });
+  nextRows.splice(index + 1, 0, child);
+  state.latestAnalysis.result.layered_validation_rows = nextRows;
+  state.rowEditState = {};
+  state.rowEditState[rowEditKey("layeredValidation", index + 1)] = true;
+  renderReadableAnalysis(state.latestAnalysis);
+}
+
+function adjustMergedRowHeight(index, delta) {
+  if (!state.latestAnalysis) return;
+  syncAnalysisDraftToState();
+  const nextRows = [...buildMergedRows(state.latestAnalysis.result)];
+  if (!nextRows[index]) return;
+  nextRows[index].rowHeight = Math.max(48, Number(nextRows[index].rowHeight || 0) + delta);
+  state.latestAnalysis.result.layered_validation_rows = nextRows;
+  renderReadableAnalysis(state.latestAnalysis);
 }
 
 function setupHistoryTableResizing() {
@@ -1095,13 +1243,14 @@ function createMergedSection(rows) {
       if (!state.latestAnalysis) return;
       const result = state.latestAnalysis.result;
       syncAnalysisDraftToState();
-      const nextRows = [...buildMergedRows(result), { category: "", subtype: "", owner: "待定", phenomenon: "", reason: "", basis: "", method: "", result: "" }];
+      const nextRows = [...buildMergedRows(result), getDefaultMergedRow()];
       result.layered_validation_rows = nextRows;
       state.rowEditState[rowEditKey("layeredValidation", nextRows.length - 1)] = true;
       renderReadableAnalysis(state.latestAnalysis);
     },
   });
   section.appendChild(header);
+  section.appendChild(createAiQaSection());
   const tableWrap = document.createElement("div");
   tableWrap.className = "merged-analysis-table-wrap";
   applyMergedColumnWidths(tableWrap);
@@ -1157,11 +1306,13 @@ function createMergedSection(rows) {
   const values = (state.layeredFilter && state.layeredFilter !== "全部"
     ? allRows.map((row, originalIndex) => ({ ...row, __sourceIndex: originalIndex })).filter((row) => normalizeCategoryLabel(row.category) === state.layeredFilter)
     : allRows.map((row, originalIndex) => ({ ...row, __sourceIndex: originalIndex })));
-  if (!values.length) values.push({ category: "", subtype: "", owner: "待定", phenomenon: "", reason: "", basis: "", method: "", result: "", __sourceIndex: allRows.length });
+  if (!values.length) values.push({ ...getDefaultMergedRow(), __sourceIndex: allRows.length });
   values.forEach((row, index) => {
     const sourceIndex = Number.isInteger(row.__sourceIndex) ? row.__sourceIndex : index;
     const editable = isRowEditing("layeredValidation", sourceIndex);
     const tr = document.createElement("tr");
+    tr.dataset.rowHeight = String(Number(row.rowHeight || 0));
+    tr.classList.toggle("child-row", Number(row.childLevel || 0) > 0);
     const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
     const categorySelect = document.createElement("select");
@@ -1184,13 +1335,7 @@ function createMergedSection(rows) {
       const customValue = window.prompt("输入自定义分类名称", row.category || "");
       if (customValue && customValue.trim()) {
         const nextValue = customValue.trim();
-        if (!Array.from(categorySelect.options).some((option) => option.value === nextValue)) {
-          const option = document.createElement("option");
-          option.value = nextValue;
-          option.textContent = nextValue;
-          categorySelect.insertBefore(option, customOption);
-        }
-        categorySelect.value = nextValue;
+        categorySelect.value = strictCategoryOptions.includes(nextValue) ? nextValue : row.category || "";
       } else {
         categorySelect.value = row.category || "";
       }
@@ -1251,8 +1396,26 @@ function createMergedSection(rows) {
       delete state.rowEditState[rowEditKey("layeredValidation", sourceIndex)];
       renderReadableAnalysis(state.latestAnalysis);
     });
+    const childBtn = document.createElement("button");
+    childBtn.type = "button";
+    childBtn.className = "secondary-button";
+    childBtn.textContent = "新增子行";
+    childBtn.addEventListener("click", () => insertMergedChildRow(sourceIndex));
+    const tallerBtn = document.createElement("button");
+    tallerBtn.type = "button";
+    tallerBtn.className = "secondary-button";
+    tallerBtn.textContent = "增高";
+    tallerBtn.addEventListener("click", () => adjustMergedRowHeight(sourceIndex, 36));
+    const shorterBtn = document.createElement("button");
+    shorterBtn.type = "button";
+    shorterBtn.className = "secondary-button";
+    shorterBtn.textContent = "减矮";
+    shorterBtn.addEventListener("click", () => adjustMergedRowHeight(sourceIndex, -36));
     actions.appendChild(upBtn);
     actions.appendChild(downBtn);
+    actions.appendChild(childBtn);
+    actions.appendChild(tallerBtn);
+    actions.appendChild(shorterBtn);
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
     actionCell.appendChild(actions);
@@ -1276,19 +1439,24 @@ function collectMergedRows() {
   const currentRows = Array.isArray(state.latestAnalysis?.result?.layered_validation_rows)
     ? state.latestAnalysis.result.layered_validation_rows.map((row) => ({ ...row }))
     : [];
-  const phenomenonItems = Array.isArray(state.latestAnalysis?.result?.phenomenon_items)
-    ? state.latestAnalysis.result.phenomenon_items.map((item) => String(item ?? "").trim())
-    : [];
   const map = new Map(currentRows.map((row, index) => [index, { ...row }]));
   Array.from(document.querySelectorAll("[data-layered-row]")).forEach((node) => {
     const rowIndex = Number(node.dataset.layeredRow);
     const field = node.dataset.layeredField;
-    if (!map.has(rowIndex)) map.set(rowIndex, { category: "", subtype: "", owner: "", phenomenon: phenomenonItems[rowIndex] || "", reason: "", basis: "", method: "", result: "" });
+    if (!map.has(rowIndex)) map.set(rowIndex, getDefaultMergedRow());
     map.get(rowIndex)[field] = node.value.trim();
+  });
+  Array.from(document.querySelectorAll(".merged-analysis-table tbody tr")).forEach((row) => {
+    const firstField = row.querySelector("[data-layered-row]");
+    if (!(firstField instanceof HTMLElement)) return;
+    const rowIndex = Number(firstField.dataset.layeredRow);
+    if (!map.has(rowIndex)) map.set(rowIndex, getDefaultMergedRow());
+    map.get(rowIndex).rowHeight = Number(row.dataset.rowHeight || "0");
+    map.get(rowIndex).childLevel = row.classList.contains("child-row") ? 1 : Number(map.get(rowIndex).childLevel || 0);
   });
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([, value]) => ({ category: value.category, subtype: value.subtype, owner: value.owner, phenomenon: value.phenomenon, reason: value.reason, basis: value.basis, method: value.method, result: value.result }))
+    .map(([, value]) => ({ category: value.category, subtype: value.subtype, owner: value.owner, phenomenon: value.phenomenon, reason: value.reason, basis: value.basis, method: value.method, result: value.result, rowHeight: Number(value.rowHeight || 0), childLevel: Number(value.childLevel || 0) }))
     .filter((row) => Object.values(row).some(Boolean));
 }
 
@@ -1387,7 +1555,6 @@ function renderReadableAnalysis(analysis) {
     summaryGrid.appendChild(createSummaryField("优先级", "summary-priority", "", "select", ["", "P0", "P1", "P2", "P3"]));
     summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", "", "select", ["", "low", "medium", "high", "critical"]));
     elements.analysisResult.appendChild(summaryGrid);
-    elements.analysisResult.appendChild(createBlankSimpleSection("01", "现象"));
     elements.analysisResult.appendChild(createReadonlyMergedSection(buildMergedRows({ layered_validation_rows: [] })));
     elements.analysisResult.appendChild(createBlankSimpleSection("04", "根因", 1));
     elements.analysisResult.appendChild(createBlankSimpleSection("05", "解决方案", 1));
@@ -1404,13 +1571,11 @@ function renderReadableAnalysis(analysis) {
   summaryGrid.appendChild(createSummaryField("风险等级", "summary-risk-level", result.risk_level || "low", "select", ["low", "medium", "high", "critical"]));
   elements.analysisResult.appendChild(summaryGrid);
 
-  const phenomenonItems = Array.isArray(result.phenomenon_items) ? result.phenomenon_items.map((item) => String(item ?? "")) : normalizeListItems(result.phenomenon_items, result.phenomenon_summary || "");
   const mergedRows = buildMergedRows(result);
   const rootCauseItems = Array.isArray(result.root_cause_items) ? result.root_cause_items.map((item) => String(item ?? "")) : normalizeListItems(result.root_cause_items, "");
   const solutionItems = Array.isArray(result.solution_items) ? result.solution_items.map((item) => String(item ?? "")) : normalizeListItems(result.solution_items, "");
   const lessonsItems = Array.isArray(result.lessons_items) ? result.lessons_items.map((item) => String(item ?? "")) : normalizeListItems(result.lessons_items, "");
 
-  elements.analysisResult.appendChild(createEditableListSection("01", "现象", "phenomenon", phenomenonItems));
   elements.analysisResult.appendChild(createMergedSection(mergedRows));
   elements.analysisResult.appendChild(createEditableListSection("04", "根因", "rootCause", rootCauseItems, 1));
   elements.analysisResult.appendChild(createEditableListSection("05", "解决方案", "solution", solutionItems, 1));
@@ -1605,7 +1770,6 @@ function createListSection(title, items) {
 function formatAnalysisForCompare(analysis) {
   const wrapper = document.createElement("article");
   wrapper.className = "compare-card";
-  wrapper.appendChild(createListSection("现象", normalizeListItems(analysis.result?.phenomenon_items, analysis.result?.phenomenon_summary || "")));
   wrapper.appendChild(createListSection("分层分析与验证", (analysis.result?.layered_validation_rows || []).map((row) => `${row.category || "未分类"} | ${row.reason || "无原因"} | 依据: ${row.basis || "无"} | ${row.method || "无方法"} | ${row.result || "无结果"} | ${row.owner || "未分配"}`)));
   wrapper.appendChild(createListSection("根因", normalizeListItems(analysis.result?.root_cause_items, analysis.result?.root_cause_summary || "")));
   return wrapper;
@@ -1757,7 +1921,6 @@ function buildHistoryAnalysisModalContent(analysis) {
     summaryGrid.appendChild(card);
   });
   wrapper.appendChild(summaryGrid);
-  wrapper.appendChild(createListSection("01 现象", normalizeListItems(result.phenomenon_items, result.phenomenon_summary || "")));
   wrapper.appendChild(createReadonlyMergedSection(buildMergedRows(result)));
   wrapper.appendChild(createListSection("04 根因", normalizeListItems(result.root_cause_items, result.root_cause_summary || "")));
   wrapper.appendChild(createListSection("05 解决方案", normalizeListItems(result.solution_items, result.solution_summary || "")));
@@ -2073,7 +2236,12 @@ function bindEvents() {
   elements.providerProfileSelect.addEventListener("change", () => {
     selectProviderProfile(elements.providerProfileSelect.value).catch(showGenericError);
   });
-  elements.aiQaAskBtn.addEventListener("click", () => askStandaloneAiQuestion().catch(showGenericError));
+  elements.createProjectBtn.addEventListener("click", () => createProject().catch(showGenericError));
+  elements.projectSelect.addEventListener("change", () => {
+    state.activeProjectId = elements.projectSelect.value;
+    state.activeSessionId = "";
+    loadSessions().catch(showGenericError);
+  });
   elements.createSessionBtn.addEventListener("click", () => createSession().catch(showGenericError));
   elements.saveSessionMetaBtn.addEventListener("click", () => saveSessionMeta().catch(showGenericError));
   elements.deleteSessionBtn.addEventListener("click", () => deleteSession().catch(showGenericError));
@@ -2120,6 +2288,7 @@ setupHistoryTableResizing();
 resetWorkflow();
 setCurrentView("analysis");
 ensureSerialPolling();
-Promise.all([loadConfig(), loadOverview(), loadSessions(), loadKnowledge(), loadSerialPorts(), pollSerialStatus()])
+Promise.all([loadConfig(), loadOverview(), loadProjects(), loadKnowledge(), loadSerialPorts(), pollSerialStatus()])
+  .then(() => loadSessions())
   .then(() => ensureAutoSessionOnEntry())
   .catch(showGenericError);

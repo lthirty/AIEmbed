@@ -23,7 +23,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.22.8"
+APP_VERSION = "v0.22.9"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -40,6 +40,7 @@ DEFAULT_PROVIDER_CONFIG = {
 DEFAULT_PROVIDER_PROFILE_NAME = "默认配置"
 DEFAULT_PROVIDER_PROFILE_ID = "default-profile"
 DEEPSEEK_PROVIDER_PROFILE_ID = "deepseek-reasoner-profile"
+LEGACY_PROJECT_ID = "legacy-project"
 BUILTIN_PROVIDER_PROFILES = [
     {
         "id": DEFAULT_PROVIDER_PROFILE_ID,
@@ -103,8 +104,17 @@ def init_storage() -> None:
     try:
         conn.executescript(
             """
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL DEFAULT '',
                 title TEXT NOT NULL,
                 customer_name TEXT NOT NULL DEFAULT '',
                 device_model TEXT NOT NULL DEFAULT '',
@@ -117,7 +127,8 @@ def init_storage() -> None:
                 owner TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'open',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(project_id) REFERENCES projects(id)
             );
 
             CREATE TABLE IF NOT EXISTS evidence (
@@ -209,6 +220,8 @@ def init_storage() -> None:
             """
         )
         existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+        if "project_id" not in existing_columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT ''")
         if "device_model" not in existing_columns:
             conn.execute("ALTER TABLE sessions ADD COLUMN device_model TEXT NOT NULL DEFAULT ''")
         if "serial_number" not in existing_columns:
@@ -246,6 +259,17 @@ def init_storage() -> None:
             conn.execute("ALTER TABLE knowledge ADD COLUMN source_title TEXT NOT NULL DEFAULT ''")
         if "source_url" not in knowledge_columns:
             conn.execute("ALTER TABLE knowledge ADD COLUMN source_url TEXT NOT NULL DEFAULT ''")
+        project_exists = conn.execute("SELECT 1 FROM projects WHERE id = ?", (LEGACY_PROJECT_ID,)).fetchone()
+        if not project_exists:
+            now = now_ts()
+            conn.execute(
+                """
+                INSERT INTO projects (id, name, description, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (LEGACY_PROJECT_ID, "历史项目", "自动迁移旧会话用", now, now),
+            )
+        conn.execute("UPDATE sessions SET project_id = ? WHERE project_id = '' OR project_id IS NULL", (LEGACY_PROJECT_ID,))
         conn.commit()
     finally:
         conn.close()
@@ -255,6 +279,16 @@ def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def project_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "description": row["description"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
 
 
 def _normalize_provider_profile(raw_profile: dict, fallback_name: str = DEFAULT_PROVIDER_PROFILE_NAME) -> dict:
@@ -628,6 +662,8 @@ def validate_provider_config(provider_config: dict) -> dict:
 def session_to_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
+        "projectId": row["project_id"] if "project_id" in row.keys() else "",
+        "projectName": row["project_name"] if "project_name" in row.keys() else "",
         "title": row["title"],
         "customerName": row["customer_name"],
         "deviceModel": row["device_model"],
@@ -746,6 +782,7 @@ def test_run_to_dict(row: sqlite3.Row) -> dict:
 
 
 def create_session(
+    project_id: str,
     title: str,
     customer_name: str,
     device_model: str,
@@ -761,14 +798,21 @@ def create_session(
     now = now_ts()
     conn = get_conn()
     try:
+        project_id = project_id.strip()
+        if not project_id:
+            raise KeyError("project not found")
+        project = conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not project:
+            raise KeyError("project not found")
         conn.execute(
             """
             INSERT INTO sessions
-            (id, title, customer_name, device_model, serial_number, device_ip, issue_type, severity, workflow_stage, symptom, owner, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+            (id, project_id, title, customer_name, device_model, serial_number, device_ip, issue_type, severity, workflow_stage, symptom, owner, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
             """,
             (
                 session_id,
+                project_id,
                 title.strip() or "未命名会话",
                 customer_name.strip(),
                 device_model.strip(),
@@ -784,7 +828,15 @@ def create_session(
             ),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        row = conn.execute(
+            """
+            SELECT sessions.*, projects.name AS project_name
+            FROM sessions
+            LEFT JOIN projects ON projects.id = sessions.project_id
+            WHERE sessions.id = ?
+            """,
+            (session_id,),
+        ).fetchone()
         for step in default_session_steps():
             conn.execute(
                 """
@@ -811,6 +863,7 @@ def create_session(
 
 def update_session(
     session_id: str,
+    project_id: str,
     title: str,
     customer_name: str,
     device_model: str,
@@ -827,13 +880,20 @@ def update_session(
         exists = conn.execute("SELECT 1 FROM sessions WHERE id = ?", (session_id,)).fetchone()
         if not exists:
             raise KeyError("session not found")
+        project_id = project_id.strip()
+        if not project_id:
+            raise KeyError("project not found")
+        project = conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not project:
+            raise KeyError("project not found")
         conn.execute(
             """
             UPDATE sessions
-            SET title = ?, customer_name = ?, device_model = ?, serial_number = ?, device_ip = ?, issue_type = ?, severity = ?, workflow_stage = ?, symptom = ?, owner = ?, updated_at = ?
+            SET project_id = ?, title = ?, customer_name = ?, device_model = ?, serial_number = ?, device_ip = ?, issue_type = ?, severity = ?, workflow_stage = ?, symptom = ?, owner = ?, updated_at = ?
             WHERE id = ?
             """,
             (
+                project_id,
                 title.strip() or "未命名会话",
                 customer_name.strip(),
                 device_model.strip(),
@@ -849,7 +909,15 @@ def update_session(
             ),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        row = conn.execute(
+            """
+            SELECT sessions.*, projects.name AS project_name
+            FROM sessions
+            LEFT JOIN projects ON projects.id = sessions.project_id
+            WHERE sessions.id = ?
+            """,
+            (session_id,),
+        ).fetchone()
         result = session_to_dict(row)
     finally:
         conn.close()
@@ -888,6 +956,34 @@ def delete_session(session_id: str) -> None:
                 upload_dir.rmdir()
             except Exception:
                 pass
+    finally:
+        conn.close()
+
+
+def create_project(name: str, description: str = "") -> dict:
+    project_id = uuid4().hex
+    now = now_ts()
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO projects (id, name, description, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, name.strip() or "未命名项目", description.strip(), now, now),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return project_to_dict(row)
+    finally:
+        conn.close()
+
+
+def list_projects() -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC, created_at DESC").fetchall()
+        return [project_to_dict(row) for row in rows]
     finally:
         conn.close()
 
@@ -957,10 +1053,20 @@ def get_evidence_file_info(evidence_id: str) -> tuple[Path, str]:
         conn.close()
 
 
-def list_sessions() -> list[dict]:
+def list_sessions(project_id: str = "") -> list[dict]:
     conn = get_conn()
     try:
-        rows = conn.execute("SELECT * FROM sessions ORDER BY updated_at DESC, created_at DESC").fetchall()
+        sql = """
+            SELECT sessions.*, projects.name AS project_name
+            FROM sessions
+            LEFT JOIN projects ON projects.id = sessions.project_id
+        """
+        params: tuple = ()
+        if project_id.strip():
+            sql += " WHERE sessions.project_id = ?"
+            params = (project_id.strip(),)
+        sql += " ORDER BY sessions.updated_at DESC, sessions.created_at DESC"
+        rows = conn.execute(sql, params).fetchall()
         return [session_to_dict(row) for row in rows]
     finally:
         conn.close()
@@ -1470,7 +1576,15 @@ def build_workbench_overview() -> dict:
 def get_session(session_id: str) -> dict:
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        row = conn.execute(
+            """
+            SELECT sessions.*, projects.name AS project_name
+            FROM sessions
+            LEFT JOIN projects ON projects.id = sessions.project_id
+            WHERE sessions.id = ?
+            """,
+            (session_id,),
+        ).fetchone()
         if not row:
             raise KeyError("session not found")
         evidence_rows = conn.execute("SELECT * FROM evidence WHERE session_id = ? ORDER BY created_at DESC", (session_id,)).fetchall()
@@ -1615,6 +1729,8 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "basis": str(row.get("basis") or "").strip(),
                     "method": str(row.get("method") or "").strip(),
                     "result": str(row.get("result") or "").strip(),
+                    "rowHeight": int(row.get("rowHeight") or 0),
+                    "childLevel": int(row.get("childLevel") or 0),
                 }
             )
 
@@ -1638,6 +1754,8 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "basis": why_text or "暂无分析结果",
                     "method": method_text or "暂无分析结果",
                     "result": result_text or "暂无分析结果",
+                    "rowHeight": 0,
+                    "childLevel": 0,
                 }
             )
 
@@ -1657,6 +1775,8 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
             row["method"] = "暂无分析结果"
         if not row.get("result"):
             row["result"] = "暂无分析结果"
+        row["rowHeight"] = int(row.get("rowHeight") or 0)
+        row["childLevel"] = int(row.get("childLevel") or 0)
 
     existing_categories = {row.get("category", "") for row in normalized_rows if row.get("category")}
     for category in DEFAULT_ANALYSIS_DIMENSIONS:
@@ -1671,6 +1791,8 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "basis": "暂无分析结果",
                     "method": "暂无分析结果",
                     "result": "暂无分析结果",
+                    "rowHeight": 0,
+                    "childLevel": 0,
                 }
             )
 
@@ -1722,6 +1844,8 @@ def enforce_evidence_basis(result_json: dict, session_payload: dict) -> dict:
                     "basis": "暂无分析结果",
                     "method": "暂无分析结果",
                     "result": "暂无分析结果",
+                    "rowHeight": 0,
+                    "childLevel": 0,
                 }
             )
             continue
@@ -1733,6 +1857,7 @@ def enforce_evidence_basis(result_json: dict, session_payload: dict) -> dict:
 
 def create_fail_session_from_test_run(base_session: dict, test_case: dict, report: dict) -> dict:
     fail_session = create_session(
+        project_id=base_session.get("projectId", ""),
         title=f"FAIL {test_case.get('caseCode') or test_case.get('name')} {now_ts()}",
         customer_name=base_session.get("customerName", ""),
         device_model=base_session.get("deviceModel", ""),
@@ -2957,8 +3082,21 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(200, build_workbench_overview())
             return
 
+        if path == "/api/projects":
+            projects = list_projects()
+            self.send_json(
+                200,
+                {
+                    "projects": projects,
+                    "activeProjectId": projects[0]["id"] if projects else "",
+                },
+            )
+            return
+
         if path == "/api/sessions":
-            self.send_json(200, {"sessions": list_sessions()})
+            query = urllib.parse.parse_qs(parsed.query)
+            project_id = str(query.get("projectId", [""])[0]).strip()
+            self.send_json(200, {"sessions": list_sessions(project_id)})
             return
 
         if path == "/api/test-cases":
@@ -3119,10 +3257,25 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             )
             return
 
+        if path == "/api/projects":
+            try:
+                payload = self.parse_json_body()
+                name = str(payload.get("name", "")).strip()
+                description = str(payload.get("description", "")).strip()
+                if not name:
+                    self.send_json(400, {"error": "name is required"})
+                    return
+                project = create_project(name, description)
+                self.send_json(200, {"ok": True, "project": project})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
         if path == "/session/create":
             try:
                 payload = self.parse_json_body()
                 session = create_session(
+                    str(payload.get("projectId", "")).strip(),
                     str(payload.get("title", "")).strip() or "客户调试会话",
                     str(payload.get("customerName", "")).strip(),
                     str(payload.get("deviceModel", "")).strip(),
@@ -3143,6 +3296,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             try:
                 payload = self.parse_json_body()
                 session = create_session(
+                    str(payload.get("projectId", "")).strip(),
                     str(payload.get("title", "")).strip() or "客户调试会话",
                     str(payload.get("customerName", "")).strip(),
                     str(payload.get("deviceModel", "")).strip(),
@@ -3511,6 +3665,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 if action == "meta":
                     session = update_session(
                         session_id,
+                        str(payload.get("projectId", "")).strip(),
                         str(payload.get("title", "")).strip(),
                         str(payload.get("customerName", "")).strip(),
                         str(payload.get("deviceModel", "")).strip(),

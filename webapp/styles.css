@@ -921,7 +921,7 @@ button:disabled {
 
 .merged-analysis-table {
   width: 100%;
-  min-width: 1800px;
+  min-width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -997,6 +997,19 @@ button:disabled {
   line-height: 1.6;
   resize: none;
   overflow-y: auto;
+}
+
+.analysis-qa-box {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(247, 242, 231, 0.75);
+}
+
+.merged-analysis-table tbody tr.child-row td {
+  background: rgba(216, 112, 46, 0.04);
 }
 
 .custom-category-input.hidden {
