@@ -30,6 +30,7 @@ namespace {
 // v0.20.10 - Project-side workbench fixes the serial log textbox to a fixed-height scroll area so the page layout stays stable during continuous capture; firmware behavior unchanged
 // v0.21.0 - Project-side workbench aligns the analysis center with the hardware troubleshooting methodology, adding newcomer guidance, layered troubleshooting order, and stronger evidence-first AI prompting; firmware behavior unchanged
 // v0.22.0 - Project-side workbench upgrades the library page into a structured case library with manual edit/save/delete, normalized AI import interfaces, and stronger newcomer-flow AI guidance; firmware behavior unchanged
+// v0.22.1 - Project-side workbench enlarges section header typography and allows collapsing/expanding panels by clicking the full first header row; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

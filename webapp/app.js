@@ -1245,10 +1245,18 @@ function enhanceCollapsibleSections() {
     children.forEach((child) => body.appendChild(child));
     container.appendChild(body);
     head.appendChild(toggle);
-    toggle.addEventListener("click", (event) => {
-      event.stopPropagation();
+    const toggleCollapsed = () => {
       const collapsed = container.classList.toggle("collapsed");
       toggle.textContent = collapsed ? "展开" : "收起";
+    };
+    head.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("button, a, input, textarea, select, label")) return;
+      toggleCollapsed();
+    });
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleCollapsed();
     });
     container.dataset.collapsibleReady = "1";
   });
