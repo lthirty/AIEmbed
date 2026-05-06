@@ -44,6 +44,17 @@
           </summary>
           <div class="details-body">
             <label>
+              已保存配置
+              <select id="provider-profile-select"></select>
+            </label>
+            <div class="inline-actions">
+              <button id="provider-new-profile-btn" type="button" class="secondary-button">新增配置</button>
+            </div>
+            <label>
+              配置名称
+              <input id="provider-profile-name" type="text" placeholder="例如 MiniMax-正式 / OpenAI-测试">
+            </label>
+            <label>
               提供方名称
               <input id="provider-name" type="text" placeholder="例如 MiniMax / OpenAI">
             </label>
@@ -204,6 +215,7 @@
                   <button id="refresh-serial-ports-btn" type="button">刷新串口</button>
                   <button id="start-serial-capture-btn" type="button">开始抓取</button>
                   <button id="stop-serial-capture-btn" type="button">停止抓取</button>
+                  <button id="clear-serial-output-btn" type="button" class="secondary-button">清空日志框</button>
                 </div>
                 <textarea id="serial-live-output" class="serial-live-output" rows="10" readonly placeholder="抓取开始后，这里会显示最近的串口日志。"></textarea>
               </div>
@@ -245,6 +257,17 @@
             </div>
             <div class="table-wrap">
               <table class="analysis-table">
+                <colgroup>
+                  <col data-col-key="select">
+                  <col data-col-key="createdAt">
+                  <col data-col-key="testTime">
+                  <col data-col-key="deviceModel">
+                  <col data-col-key="serialNumber">
+                  <col data-col-key="priority">
+                  <col data-col-key="riskLevel">
+                  <col data-col-key="summary">
+                  <col data-col-key="actions">
+                </colgroup>
                 <thead>
                   <tr>
                     <th>选择</th>

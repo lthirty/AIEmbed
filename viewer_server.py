@@ -1,4 +1,5 @@
 import base64
+import ast
 import cgi
 import json
 import mimetypes
@@ -22,7 +23,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.22.3"
+APP_VERSION = "v0.22.4"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -36,8 +37,10 @@ DEFAULT_PROVIDER_CONFIG = {
     "apiKey": os.getenv("OPENAI_API_KEY", "").strip(),
     "model": os.getenv("OPENAI_MODEL", "MiniMax-M2.7").strip() or "MiniMax-M2.7",
 }
+DEFAULT_PROVIDER_PROFILE_NAME = "默认配置"
+DEFAULT_PROVIDER_PROFILE_ID = "default-profile"
 MAX_LOG_ENTRIES = 300
-MAX_PROMPT_EVIDENCE_CHARS = 12000
+MAX_PROMPT_EVIDENCE_CHARS = 7000
 AI_PROVIDER_TIMEOUT_SECONDS = 180
 REQUEST_LOGS: list[dict] = []
 SERIAL_CAPTURE_STATE = {
@@ -235,20 +238,95 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def _normalize_provider_profile(raw_profile: dict, fallback_name: str = DEFAULT_PROVIDER_PROFILE_NAME) -> dict:
+    return {
+        "id": str(raw_profile.get("id", "")).strip() or DEFAULT_PROVIDER_PROFILE_ID,
+        "profileName": str(raw_profile.get("profileName", "")).strip() or fallback_name,
+        "providerName": str(raw_profile.get("providerName", DEFAULT_PROVIDER_CONFIG["providerName"])).strip() or DEFAULT_PROVIDER_CONFIG["providerName"],
+        "apiBaseUrl": str(raw_profile.get("apiBaseUrl", DEFAULT_PROVIDER_CONFIG["apiBaseUrl"])).strip() or DEFAULT_PROVIDER_CONFIG["apiBaseUrl"],
+        "apiKey": str(raw_profile.get("apiKey", DEFAULT_PROVIDER_CONFIG["apiKey"])).strip(),
+        "model": str(raw_profile.get("model", DEFAULT_PROVIDER_CONFIG["model"])).strip() or DEFAULT_PROVIDER_CONFIG["model"],
+        "createdAt": str(raw_profile.get("createdAt", "")).strip() or now_ts(),
+        "updatedAt": str(raw_profile.get("updatedAt", "")).strip() or now_ts(),
+    }
+
+
+def load_provider_profiles_state() -> dict:
+    default_profile = _normalize_provider_profile({"id": DEFAULT_PROVIDER_PROFILE_ID, "profileName": DEFAULT_PROVIDER_PROFILE_NAME, **DEFAULT_PROVIDER_CONFIG})
+    state = {"activeProfileId": default_profile["id"], "profiles": [default_profile]}
+    if not CONFIG_PATH.exists():
+        return state
+    try:
+        parsed = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return state
+
+    if isinstance(parsed, dict) and isinstance(parsed.get("profiles"), list):
+        profiles = [_normalize_provider_profile(item) for item in parsed.get("profiles", []) if isinstance(item, dict)]
+        if not profiles:
+            profiles = [default_profile]
+        active_profile_id = str(parsed.get("activeProfileId", "")).strip() or profiles[0]["id"]
+        if not any(item["id"] == active_profile_id for item in profiles):
+            active_profile_id = profiles[0]["id"]
+        return {"activeProfileId": active_profile_id, "profiles": profiles}
+
+    if isinstance(parsed, dict):
+        migrated = _normalize_provider_profile({"id": DEFAULT_PROVIDER_PROFILE_ID, **DEFAULT_PROVIDER_CONFIG, **parsed})
+        return {"activeProfileId": migrated["id"], "profiles": [migrated]}
+
+    return state
+
+
+def save_provider_profiles_state(state: dict) -> None:
+    CONFIG_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def list_provider_profiles() -> list[dict]:
+    state = load_provider_profiles_state()
+    profiles = []
+    for item in state.get("profiles", []):
+        profile = dict(item)
+        profile["apiConfigured"] = bool(profile.get("apiKey", "").strip())
+        profiles.append(profile)
+    return profiles
+
+
 def load_provider_config() -> dict:
-    config = dict(DEFAULT_PROVIDER_CONFIG)
-    if CONFIG_PATH.exists():
-        try:
-            file_config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            if isinstance(file_config, dict):
-                config.update({k: str(v) for k, v in file_config.items() if k in config})
-        except Exception:
-            pass
-    return config
+    state = load_provider_profiles_state()
+    active_profile_id = state.get("activeProfileId", "")
+    for item in state.get("profiles", []):
+        if item.get("id") == active_profile_id:
+            return dict(item)
+    return dict(state.get("profiles", [{}])[0] or DEFAULT_PROVIDER_CONFIG)
 
 
-def save_provider_config(config: dict) -> None:
-    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+def save_provider_config(config: dict) -> dict:
+    state = load_provider_profiles_state()
+    now = now_ts()
+    incoming_id = str(config.get("id", "")).strip()
+    profile_name = str(config.get("profileName", "")).strip() or str(config.get("providerName", "")).strip() or DEFAULT_PROVIDER_PROFILE_NAME
+    normalized = _normalize_provider_profile({**config, "id": incoming_id, "profileName": profile_name, "updatedAt": now})
+    profiles = state.get("profiles", [])
+    existing_index = next((index for index, item in enumerate(profiles) if item.get("id") == normalized["id"]), -1)
+    if existing_index >= 0:
+        normalized["createdAt"] = profiles[existing_index].get("createdAt", normalized["createdAt"])
+        profiles[existing_index] = normalized
+    else:
+        profiles.append(normalized)
+    state["profiles"] = profiles
+    state["activeProfileId"] = normalized["id"]
+    save_provider_profiles_state(state)
+    return normalized
+
+
+def select_provider_profile(profile_id: str) -> dict:
+    state = load_provider_profiles_state()
+    for item in state.get("profiles", []):
+        if item.get("id") == profile_id:
+            state["activeProfileId"] = profile_id
+            save_provider_profiles_state(state)
+            return dict(item)
+    raise KeyError("provider profile not found")
 
 
 def infer_api_mode(api_base_url: str) -> str:
@@ -323,7 +401,7 @@ def parse_response_text(payload: dict, api_mode: str) -> str:
     return "\n".join(chunks).strip()
 
 
-def build_text_payload(prompt: str, provider_config: dict) -> tuple[str, str, str, dict]:
+def build_text_payload(prompt: str, provider_config: dict, require_json: bool = False) -> tuple[str, str, str, dict]:
     api_base_url = provider_config.get("apiBaseUrl", "").strip()
     model = provider_config.get("model", "").strip()
     api_mode = infer_api_mode(api_base_url)
@@ -347,16 +425,19 @@ def build_text_payload(prompt: str, provider_config: dict) -> tuple[str, str, st
         payload = {
             "model": effective_model,
             "messages": [
-                {"role": "system", "content": "You are a concise embedded debug analyst. Return only the requested result."},
+                {"role": "system", "content": "You are a concise embedded debug analyst. Return only the requested result." if not require_json else "You are a concise embedded debug analyst. Return only one valid JSON object. Do not add markdown, commentary, or trailing text."},
                 {"role": "user", "content": prompt},
             ],
             "stream": False,
+            "temperature": 0.1,
         }
+        if require_json:
+            payload["response_format"] = {"type": "json_object"}
     else:
         payload = {
             "model": effective_model,
             "input": [
-                {"role": "system", "content": [{"type": "input_text", "text": "You are a concise embedded debug analyst. Return only the requested result."}]},
+                {"role": "system", "content": [{"type": "input_text", "text": "You are a concise embedded debug analyst. Return only the requested result." if not require_json else "You are a concise embedded debug analyst. Return only one valid JSON object. Do not add markdown, commentary, or trailing text."}]},
                 {"role": "user", "content": [{"type": "input_text", "text": prompt}]},
             ],
         }
@@ -364,13 +445,13 @@ def build_text_payload(prompt: str, provider_config: dict) -> tuple[str, str, st
     return effective_api_base_url, effective_model, api_mode, payload
 
 
-def call_provider_text(prompt: str, provider_config: dict, request_id: str | None = None) -> str:
+def call_provider_text(prompt: str, provider_config: dict, request_id: str | None = None, require_json: bool = False) -> str:
     api_key = provider_config.get("apiKey", "").strip()
     provider_name = provider_config.get("providerName", "").strip() or "Provider"
     if not api_key:
         raise RuntimeError("API Key is not configured.")
 
-    effective_api_base_url, effective_model, api_mode, payload = build_text_payload(prompt, provider_config)
+    effective_api_base_url, effective_model, api_mode, payload = build_text_payload(prompt, provider_config, require_json=require_json)
     add_log(
         "info",
         "provider",
@@ -385,6 +466,7 @@ def call_provider_text(prompt: str, provider_config: dict, request_id: str | Non
             "promptLength": len(prompt),
             "payloadPreview": json.dumps(payload, ensure_ascii=False)[:400],
             "payloadType": "text_analysis",
+            "requireJson": require_json,
         },
         request_id,
     )
@@ -2202,40 +2284,75 @@ def summarize_library_context(session_payload: dict) -> dict:
     }
 
 
+def build_evidence_section(item: dict) -> str:
+    body = item.get("contentText", "") or ""
+    meta = item.get("meta") or {}
+    if not body:
+        summary_lines = []
+        if item.get("fileName"):
+            summary_lines.append(f"file_name: {item.get('fileName')}")
+        if meta.get("mediaCategory"):
+            summary_lines.append(f"media_category: {meta.get('mediaCategory')}")
+        if meta.get("extractNote"):
+            summary_lines.append(f"extract_note: {meta.get('extractNote')}")
+        if item.get("kind") == "snapshot":
+            summary_lines.append("图像证据已保存，本轮分析以文本资料、日志、导入信息和人工输入为主。")
+        body = "\n".join(summary_lines)
+    if not body:
+        return ""
+    return (
+        f"[{item.get('kind')}] {item.get('title')}\n"
+        f"created_at: {item.get('createdAt')}\n"
+        f"content:\n{trim_text(body, 1000)}"
+    )
+
+
+def split_current_and_previous_evidence(session_payload: dict) -> tuple[list[dict], list[dict]]:
+    evidence = session_payload.get("evidence", []) or []
+    analyses = session_payload.get("analyses", []) or []
+    if not evidence:
+        return [], []
+    latest_analysis_at = str(analyses[0].get("createdAt", "")).strip() if analyses else ""
+    if latest_analysis_at:
+        current_items = [item for item in evidence if str(item.get("createdAt", "")).strip() > latest_analysis_at]
+        if current_items:
+            previous_items = [item for item in evidence if item not in current_items]
+            return current_items, previous_items
+    current_items = evidence[: min(6, len(evidence))]
+    previous_items = evidence[min(6, len(evidence)) :]
+    return current_items, previous_items
+
+
+def summarize_previous_evidence(previous_items: list[dict]) -> list[dict]:
+    summary: list[dict] = []
+    for item in previous_items[:8]:
+        summary.append(
+            {
+                "kind": item.get("kind", ""),
+                "title": item.get("title", ""),
+                "fileName": item.get("fileName", ""),
+                "createdAt": item.get("createdAt", ""),
+            }
+        )
+    return summary
+
+
 def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
-    evidence = session_payload.get("evidence", [])
+    current_evidence, previous_evidence = split_current_and_previous_evidence(session_payload)
     selected_sections: list[str] = []
     used_chars = 0
 
-    for item in evidence:
-        body = item.get("contentText", "") or ""
-        meta = item.get("meta") or {}
-        if not body:
-            summary_lines = []
-            if item.get("fileName"):
-                summary_lines.append(f"file_name: {item.get('fileName')}")
-            if meta.get("mediaCategory"):
-                summary_lines.append(f"media_category: {meta.get('mediaCategory')}")
-            if meta.get("extractNote"):
-                summary_lines.append(f"extract_note: {meta.get('extractNote')}")
-            if item.get("kind") == "snapshot":
-                summary_lines.append("图像证据已保存，本轮分析以文本资料、日志、导入信息和人工输入为主。")
-            if summary_lines:
-                body = "\n".join(summary_lines)
-        if not body:
+    for item in current_evidence:
+        section = build_evidence_section(item)
+        if not section:
             continue
-        section = (
-            f"[{item.get('kind')}] {item.get('title')}\n"
-            f"created_at: {item.get('createdAt')}\n"
-            f"content:\n{trim_text(body, 1800)}"
-        )
         if used_chars + len(section) > MAX_PROMPT_EVIDENCE_CHARS:
             break
         selected_sections.append(section)
         used_chars += len(section)
 
     if not selected_sections:
-        selected_sections.append("当前会话还没有足够证据，请明确指出缺失信息。")
+        selected_sections.append("本次问题范围内还没有足够证据，请明确指出缺失信息。")
 
     protocol = {
         "workflow": [
@@ -2275,31 +2392,10 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "phenomenon_summary": "",
         "phenomenon_items": [""],
         "layered_validation_rows": [{"category": "", "subtype": "", "owner": "", "reason": "", "basis": "", "method": "", "result": ""}],
-        "layered_analysis": [{"layer": "", "judgement": "", "why": ""}],
         "evidence_used": [{"evidence_title": "", "kind": "", "why_it_matters": ""}],
-        "possible_causes": [{"label": "", "confidence": 0.0, "reasoning": "", "required_next_check": ""}],
-        "validation_steps": [{"step_id": "V1", "goal": "", "instructions": "", "expected_result": "", "risk": "low"}],
         "missing_information": [""],
-        "guidance_checklist": [{"order": 1, "action": "", "why": "", "done_when": ""}],
-        "evidence_checklist": [{"evidence_type": "", "purpose": "", "status": "missing | ready"}],
         "priority": "P1",
         "risk_level": "low",
-        "workflow_guidance": [{"stage": "", "guidance": "", "completion_hint": ""}],
-        "suggested_commands_or_snippets": [{"kind": "serial", "content": ""}],
-        "fishbone_diagram": {
-            "problem": "",
-            "branches": [{"branch": "", "causes": [""]}],
-        },
-        "mindmap_tree": {
-            "root": "",
-            "children": [{"title": "", "children": [""]}],
-        },
-        "related_assets": {
-            "recommended_test_cases": [""],
-            "similar_session_hints": [""],
-            "reusable_patterns": [""],
-        },
-        "case_update_hint": {"should_promote_to_case": False, "candidate_root_cause_tags": [""]},
         "root_cause_items": [],
         "solution_items": [],
         "lessons_items": [],
@@ -2313,26 +2409,28 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "请优先遵循六步协议：现象、分层分析、验证方法、根因、解决方案、经验总结。"
         "本轮先只完成现象，以及“分层分析+验证方法”的合并条目。"
         "根因、解决方案、经验总结必须先留空，等待人工验证后再填写。"
-        "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
+        "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、缺失信息、优先级和风险等级。"
         "“02 分析与验证”列表中的每一条请显式给出 category、subtype、owner、reason、basis、method、result 七个字段。"
         "请优先从多个维度进行可能性分析，至少覆盖：硬件、软件、固件、OS、器件、生产、工艺。"
         "分析思路请参考硬件问题定位方法论：先整理现象与关键属性，再默认按 硬件→接口→驱动→系统→应用 的顺序排查。"
-        "请在 validation_steps、guidance_checklist 里写出适合新手照着做的顺序化动作：先看什么，再看什么，需要什么证据，完成标准是什么。"
         "如果某个维度暂时没有足够结论，也必须在对应条目里写“暂无分析结果”。"
         "严禁为了填满表格而编造事实。所有判断都必须能回溯到用户提供的资料、日志或案例库内容。"
+        "必须严格区分“本次问题证据”和“历史残留证据”：current_issue_evidence 是本次问题的主分析范围；previous_issue_reference_only 只能作为背景参考，不能覆盖本次结论。"
         "优先引用 knowledge_library 里的案例条目、快速检查项、验证方法和参考链接；如果案例库没有支撑，也要明确写出。"
         "basis 字段必须直接写明依据来源，例如“串口日志：...”“资料：...”“案例库：...”“外部参考：...”或“暂无分析结果”。"
         "如果当前证据不足以支持某一行，请把 reason、basis、method、result 写成“暂无分析结果”或明确缺少哪类证据。"
-        "请优先帮助新手推进定位：把每一步写成可执行动作，明确先看什么、再看什么、为什么这么看。"
-        "请加强引导功能：优先给出可执行的列表化 checklist，并额外输出 fishbone_diagram 和 mindmap_tree。"
-        "如果证据不足，明确写入 missing_information；如果历史库里有可参考资产，写入 related_assets。"
+        "请优先帮助新手推进定位：每一行原因分析和验证方法都要写成可执行动作。"
+        "如果证据不足，明确写入 missing_information。"
+        "输出字段只能包含 json_schema_example 里列出的字段，不要额外增加无关字段。"
         "输出必须是纯 JSON，不能带 Markdown 代码块。\n\n"
         f"session:\n{json.dumps({k: session_payload.get(k) for k in ['id', 'title', 'customerName', 'deviceModel', 'serialNumber', 'deviceIp', 'issueType', 'severity', 'workflowStage', 'symptom', 'owner', 'status', 'createdAt', 'updatedAt']}, ensure_ascii=False, indent=2)}\n\n"
         f"workflow_protocol:\n{json.dumps(protocol, ensure_ascii=False, indent=2)}\n\n"
         f"methodology:\n{json.dumps(methodology, ensure_ascii=False, indent=2)}\n\n"
         f"knowledge_library:\n{json.dumps(summarize_library_context(session_payload), ensure_ascii=False, indent=2)}\n\n"
         f"user_request:\n{request_text.strip() or '请基于当前资料、日志和历史沉淀自动分析，并给出流程化引导。'}\n\n"
-        f"selected_evidence:\n{'\n\n'.join(selected_sections)}\n\n"
+        f"current_issue_scope:\n{json.dumps({'currentEvidenceCount': len(current_evidence), 'previousEvidenceCount': len(previous_evidence), 'rule': '优先只分析最新一次分析之后新增的资料和日志；旧资料只作为背景参考。'}, ensure_ascii=False, indent=2)}\n\n"
+        f"current_issue_evidence:\n{'\n\n'.join(selected_sections)}\n\n"
+        f"previous_issue_reference_only:\n{json.dumps(summarize_previous_evidence(previous_evidence), ensure_ascii=False, indent=2)}\n\n"
         f"json_schema_example:\n{json.dumps(schema, ensure_ascii=False, indent=2)}"
     )
 
@@ -2377,9 +2475,19 @@ def _extract_first_json_object(text: str) -> str:
 def _repair_common_json_issues(text: str) -> str:
     fixed = text.strip()
     fixed = fixed.replace("\r\n", "\n").replace("\r", "\n")
+    fixed = fixed.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
     fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
     fixed = re.sub(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)", r'\1"\2"\3', fixed)
+    fixed = re.sub(r"([{,]\s*)'([^']+?)'(\s*:)", r'\1"\2"\3', fixed)
+    fixed = re.sub(r":\s*'([^'\\]*(?:\\.[^'\\]*)*)'", lambda m: ': "' + m.group(1).replace('"', '\\"') + '"', fixed)
     return fixed
+
+
+def _parse_with_literal_eval(candidate: str):
+    pythonish = re.sub(r"\btrue\b", "True", candidate, flags=re.I)
+    pythonish = re.sub(r"\bfalse\b", "False", pythonish, flags=re.I)
+    pythonish = re.sub(r"\bnull\b", "None", pythonish, flags=re.I)
+    return ast.literal_eval(pythonish)
 
 
 def try_parse_analysis_json(raw_text: str) -> dict:
@@ -2402,6 +2510,12 @@ def try_parse_analysis_json(raw_text: str) -> dict:
     for candidate in attempts:
         try:
             parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception as exc:
+            last_error = exc
+        try:
+            parsed = _parse_with_literal_eval(candidate)
             if isinstance(parsed, dict):
                 return parsed
         except Exception as exc:
@@ -2464,6 +2578,10 @@ def try_parse_json_document(raw_text: str):
             continue
         try:
             return json.loads(candidate)
+        except Exception as exc:
+            last_error = exc
+        try:
+            return _parse_with_literal_eval(candidate)
         except Exception as exc:
             last_error = exc
     preview = trim_text(text, 240).replace("\n", " ")
@@ -2549,7 +2667,7 @@ def normalize_ai_import_cases(payload: dict) -> list[dict]:
     if not source_text:
         raise RuntimeError("sourceText 或 normalizedCases 至少提供一项")
     prompt = build_knowledge_import_prompt(source_title, source_url, source_text)
-    raw_text = call_provider_text(prompt, load_provider_config(), str(int(time.time() * 1000)))
+    raw_text = call_provider_text(prompt, load_provider_config(), str(int(time.time() * 1000)), require_json=True)
     parsed = try_parse_json_document(raw_text)
     if isinstance(parsed, list):
         cases = parsed
@@ -2649,7 +2767,7 @@ def run_session_analysis(session_id: str, request_text: str, device_ip: str, cap
         {"sessionId": session_id, "promptLength": len(prompt), "evidenceCount": len(session_payload.get("evidence", []))},
         request_id,
     )
-    raw_text = call_provider_text(prompt, load_provider_config(), request_id)
+    raw_text = call_provider_text(prompt, load_provider_config(), request_id, require_json=True)
     result_json = try_parse_analysis_json(raw_text)
     result_json = normalize_layered_validation_rows(result_json)
     result_json = enforce_evidence_basis(result_json, session_payload)
@@ -2700,10 +2818,13 @@ class ViewerHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/config":
             provider_config = load_provider_config()
+            provider_profiles = list_provider_profiles()
             self.send_json(
                 200,
                 {
                     "appVersion": APP_VERSION,
+                    "activeProfileId": provider_config.get("id", ""),
+                    "profileName": provider_config.get("profileName", DEFAULT_PROVIDER_PROFILE_NAME),
                     "providerName": provider_config.get("providerName", ""),
                     "apiBaseUrl": provider_config.get("apiBaseUrl", ""),
                     "model": provider_config.get("model", ""),
@@ -2711,6 +2832,38 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                     "apiKeySaved": bool(provider_config.get("apiKey", "").strip()),
                     "visionSupported": provider_supports_vision(provider_config)[0],
                     "visionReason": provider_supports_vision(provider_config)[1],
+                    "profiles": [
+                        {
+                            "id": item.get("id", ""),
+                            "profileName": item.get("profileName", DEFAULT_PROVIDER_PROFILE_NAME),
+                            "providerName": item.get("providerName", ""),
+                            "apiBaseUrl": item.get("apiBaseUrl", ""),
+                            "model": item.get("model", ""),
+                            "apiConfigured": item.get("apiConfigured", False),
+                        }
+                        for item in provider_profiles
+                    ],
+                },
+            )
+            return
+
+        if path == "/api/providers":
+            profiles = list_provider_profiles()
+            self.send_json(
+                200,
+                {
+                    "activeProfileId": load_provider_config().get("id", ""),
+                    "profiles": [
+                        {
+                            "id": item.get("id", ""),
+                            "profileName": item.get("profileName", DEFAULT_PROVIDER_PROFILE_NAME),
+                            "providerName": item.get("providerName", ""),
+                            "apiBaseUrl": item.get("apiBaseUrl", ""),
+                            "model": item.get("model", ""),
+                            "apiConfigured": item.get("apiConfigured", False),
+                        }
+                        for item in profiles
+                    ],
                 },
             )
             return
@@ -2721,6 +2874,7 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self.send_json(
                 200,
                 {
+                    "profileName": provider_config.get("profileName", DEFAULT_PROVIDER_PROFILE_NAME),
                     "providerName": provider_config.get("providerName", ""),
                     "apiConfigured": bool(provider_config.get("apiKey", "").strip()),
                     "validation": validation,
@@ -2842,6 +2996,8 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 return
 
             provider_config = {
+                "id": str(payload.get("profileId", payload.get("id", ""))).strip(),
+                "profileName": str(payload.get("profileName", "")).strip() or str(payload.get("providerName", "")).strip() or DEFAULT_PROVIDER_PROFILE_NAME,
                 "providerName": str(payload.get("providerName", "")).strip() or "OpenAI-compatible",
                 "apiBaseUrl": str(payload.get("apiBaseUrl", "")).strip(),
                 "apiKey": str(payload.get("apiKey", "")).strip(),
@@ -2854,17 +3010,51 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 self.send_json(400, {"error": "model is required"})
                 return
 
-            save_provider_config(provider_config)
-            validation = validate_provider_config(provider_config)
+            saved_profile = save_provider_config(provider_config)
+            validation = validate_provider_config(saved_profile)
             self.send_json(
                 200,
                 {
                     "ok": True,
-                    "providerName": provider_config["providerName"],
-                    "apiBaseUrl": provider_config["apiBaseUrl"],
-                    "model": provider_config["model"],
-                    "apiConfigured": bool(provider_config["apiKey"]),
-                    "apiKeySaved": bool(provider_config["apiKey"]),
+                    "profileId": saved_profile["id"],
+                    "profileName": saved_profile["profileName"],
+                    "providerName": saved_profile["providerName"],
+                    "apiBaseUrl": saved_profile["apiBaseUrl"],
+                    "model": saved_profile["model"],
+                    "apiConfigured": bool(saved_profile["apiKey"]),
+                    "apiKeySaved": bool(saved_profile["apiKey"]),
+                    "validation": validation,
+                },
+            )
+            return
+
+        if path == "/api/provider/select":
+            try:
+                payload = self.parse_json_body()
+            except Exception:
+                self.send_json(400, {"error": "Invalid JSON body"})
+                return
+            profile_id = str(payload.get("profileId", "")).strip()
+            if not profile_id:
+                self.send_json(400, {"error": "profileId is required"})
+                return
+            try:
+                selected = select_provider_profile(profile_id)
+            except KeyError:
+                self.send_json(404, {"error": "provider profile not found"})
+                return
+            validation = validate_provider_config(selected)
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "profileId": selected["id"],
+                    "profileName": selected["profileName"],
+                    "providerName": selected["providerName"],
+                    "apiBaseUrl": selected["apiBaseUrl"],
+                    "model": selected["model"],
+                    "apiConfigured": bool(selected["apiKey"]),
+                    "apiKeySaved": bool(selected["apiKey"]),
                     "validation": validation,
                 },
             )

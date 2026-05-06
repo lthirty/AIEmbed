@@ -33,6 +33,7 @@ namespace {
 // v0.22.1 - Project-side workbench enlarges section header typography and allows collapsing/expanding panels by clicking the full first header row; firmware behavior unchanged
 // v0.22.2 - Project-side workbench supports multi-file evidence upload, renames 02-03 to 分析与验证, adds category filtering, and aligns all section header sizes; firmware behavior unchanged
 // v0.22.3 - Project-side workbench splits A/B evidence display, adds subtype and per-column filtering to 02 分析与验证, constrains category choices, and enables collapsing result subsections by clicking their first row; firmware behavior unchanged
+// v0.22.4 - Project-side workbench distinguishes current-issue evidence from older attachments during AI analysis, adds saved AI profile selection, resizable history-analysis columns, default-collapsed serial capture, and stronger JSON parsing/response handling; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

@@ -4,6 +4,9 @@ const elements = {
   providerStatus: document.getElementById("provider-status"),
   heroProviderStatus: document.getElementById("hero-provider-status"),
   providerModel: document.getElementById("provider-model"),
+  providerProfileSelect: document.getElementById("provider-profile-select"),
+  providerProfileName: document.getElementById("provider-profile-name"),
+  providerNewProfileBtn: document.getElementById("provider-new-profile-btn"),
   providerName: document.getElementById("provider-name"),
   apiBaseUrl: document.getElementById("api-base-url"),
   apiKey: document.getElementById("api-key"),
@@ -44,6 +47,7 @@ const elements = {
   refreshSerialPortsBtn: document.getElementById("refresh-serial-ports-btn"),
   startSerialCaptureBtn: document.getElementById("start-serial-capture-btn"),
   stopSerialCaptureBtn: document.getElementById("stop-serial-capture-btn"),
+  clearSerialOutputBtn: document.getElementById("clear-serial-output-btn"),
   serialStatusText: document.getElementById("serial-status-text"),
   serialLiveOutput: document.getElementById("serial-live-output"),
   suggestMissingBtn: document.getElementById("suggest-missing-btn"),
@@ -116,6 +120,9 @@ const state = {
   serialPorts: [],
   serialStatus: null,
   serialPollTimer: null,
+  providerProfiles: [],
+  activeProviderProfileId: "",
+  providerCreateMode: false,
   layeredFilter: "全部",
   mergedColumnWidths: {
     category: 120,
@@ -125,6 +132,17 @@ const state = {
     basis: 240,
     method: 240,
     result: 180,
+    actions: 180,
+  },
+  historyColumnWidths: {
+    select: 70,
+    createdAt: 150,
+    testTime: 150,
+    deviceModel: 140,
+    serialNumber: 140,
+    priority: 90,
+    riskLevel: 100,
+    summary: 320,
     actions: 180,
   },
 };
@@ -206,6 +224,50 @@ function updateApiKeyStatus(saved) {
   elements.apiKeyStatus.textContent = saved ? "API Key 已保存，页面不显示具体值。" : "未保存 API Key";
 }
 
+function renderProviderProfileOptions() {
+  const select = elements.providerProfileSelect;
+  select.innerHTML = "";
+  if (!state.providerProfiles.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "暂无已保存配置";
+    select.appendChild(option);
+    return;
+  }
+  state.providerProfiles.forEach((profile) => {
+    const option = document.createElement("option");
+    option.value = profile.id;
+    option.textContent = `${profile.profileName || "未命名配置"} · ${profile.providerName || "-"} · ${profile.model || "-"}`;
+    select.appendChild(option);
+  });
+  select.value = state.activeProviderProfileId || state.providerProfiles[0]?.id || "";
+}
+
+function fillProviderForm(config, { clearApiKey = true } = {}) {
+  elements.providerProfileName.value = config?.profileName || "";
+  elements.providerName.value = config?.providerName || "";
+  elements.apiBaseUrl.value = config?.apiBaseUrl || "";
+  elements.providerModelInput.value = config?.model || "";
+  if (clearApiKey) {
+    elements.apiKey.value = "";
+  }
+}
+
+function beginNewProviderProfile() {
+  state.providerCreateMode = true;
+  state.activeProviderProfileId = "";
+  elements.providerProfileSelect.value = "";
+  fillProviderForm({
+    profileName: "",
+    providerName: "",
+    apiBaseUrl: "",
+    model: "",
+  });
+  updateApiKeyStatus(false);
+  setValidationState(false, "正在新增一套新的 AI 配置，请填写后保存。");
+  elements.aiSettingsPanel.open = true;
+}
+
 function setCurrentView(view) {
   state.currentView = view;
   const titles = {
@@ -259,11 +321,18 @@ async function validateSavedProvider() {
 
 async function loadConfig() {
   const data = await apiGet("/api/config");
+  state.providerProfiles = data.profiles || [];
+  state.activeProviderProfileId = data.activeProfileId || "";
+  state.providerCreateMode = false;
   elements.appVersion.textContent = data.appVersion || "-";
   elements.heroAppVersion.textContent = data.appVersion || "-";
-  elements.providerName.value = data.providerName || "";
-  elements.apiBaseUrl.value = data.apiBaseUrl || "";
-  elements.providerModelInput.value = data.model || "";
+  renderProviderProfileOptions();
+  fillProviderForm({
+    profileName: data.profileName || "",
+    providerName: data.providerName || "",
+    apiBaseUrl: data.apiBaseUrl || "",
+    model: data.model || "",
+  });
   elements.providerModel.textContent = data.model || "-";
   elements.apiKey.value = "";
   updateApiKeyStatus(!!data.apiKeySaved);
@@ -408,11 +477,16 @@ async function saveProviderConfig() {
   elements.saveProviderBtn.disabled = true;
   try {
     const data = await apiPost("/api/provider", {
+      profileId: state.providerCreateMode ? "" : state.activeProviderProfileId,
+      profileName: elements.providerProfileName.value.trim(),
       providerName: elements.providerName.value.trim(),
       apiBaseUrl: elements.apiBaseUrl.value.trim(),
       apiKey: elements.apiKey.value.trim(),
       model: elements.providerModelInput.value.trim(),
     });
+    state.activeProviderProfileId = data.profileId || "";
+    state.providerCreateMode = false;
+    await loadConfig();
     elements.providerModel.textContent = data.model || "-";
     elements.apiKey.value = "";
     updateApiKeyStatus(!!data.apiKeySaved);
@@ -420,6 +494,22 @@ async function saveProviderConfig() {
   } finally {
     elements.saveProviderBtn.disabled = false;
   }
+}
+
+async function selectProviderProfile(profileId) {
+  if (!profileId) return;
+  const data = await apiPost("/api/provider/select", { profileId });
+  state.activeProviderProfileId = data.profileId || profileId;
+  state.providerCreateMode = false;
+  fillProviderForm({
+    profileName: data.profileName || "",
+    providerName: data.providerName || "",
+    apiBaseUrl: data.apiBaseUrl || "",
+    model: data.model || "",
+  });
+  elements.providerModel.textContent = data.model || "-";
+  updateApiKeyStatus(!!data.apiKeySaved);
+  await loadConfig();
 }
 
 async function uploadMaterial() {
@@ -566,7 +656,7 @@ function hasEvidenceReady() {
 
 function buildDefaultAnalysisPrompt() {
   const lines = [
-    "请基于当前会话里的资料、问题描述、测试报告、图片和日志进行结构化分析。",
+    "请只基于当前问题对应的新资料、问题描述、测试报告、图片和日志进行结构化分析，旧问题资料只能作为背景参考。",
     "先完成：01 现象；再完成：分析与验证。",
     "分析顺序默认按：硬件 -> 接口 -> 驱动 -> 系统 -> 应用。",
     "请优先说明触发条件、影响范围、复现频率，以及当前证据能支持到哪一层。",
@@ -875,6 +965,12 @@ function applyMergedColumnWidths(element) {
   });
 }
 
+function applyHistoryColumnWidths(element) {
+  Object.entries(state.historyColumnWidths).forEach(([key, value]) => {
+    element.style.setProperty(`--history-col-${key}`, `${value}px`);
+  });
+}
+
 function createResizeHandle(columnKey, element) {
   const handle = document.createElement("span");
   handle.className = "column-resize-handle";
@@ -895,6 +991,46 @@ function createResizeHandle(columnKey, element) {
     window.addEventListener("mouseup", onUp);
   });
   return handle;
+}
+
+function createHistoryResizeHandle(columnKey, element) {
+  const handle = document.createElement("span");
+  handle.className = "column-resize-handle";
+  handle.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = state.historyColumnWidths[columnKey];
+    const onMove = (moveEvent) => {
+      const next = Math.max(80, startWidth + moveEvent.clientX - startX);
+      state.historyColumnWidths[columnKey] = next;
+      applyHistoryColumnWidths(element);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+  return handle;
+}
+
+function setupHistoryTableResizing() {
+  const table = document.querySelector(".analysis-table");
+  const wrap = table?.closest(".table-wrap");
+  if (!(table instanceof HTMLTableElement) || !(wrap instanceof HTMLElement)) return;
+  applyHistoryColumnWidths(wrap);
+  const headers = Array.from(table.querySelectorAll("thead th"));
+  const keys = ["select", "createdAt", "testTime", "deviceModel", "serialNumber", "priority", "riskLevel", "summary", "actions"];
+  headers.forEach((th, index) => {
+    if (!(th instanceof HTMLElement)) return;
+    if (th.dataset.historyResizableReady === "1") return;
+    const key = keys[index];
+    if (!key || key === "actions") return;
+    th.classList.add("history-analysis-head");
+    th.appendChild(createHistoryResizeHandle(key, wrap));
+    th.dataset.historyResizableReady = "1";
+  });
 }
 
 function createMergedSection(rows) {
@@ -939,7 +1075,23 @@ function createMergedSection(rows) {
   headers.forEach(([key, label]) => {
     const th = document.createElement("th");
     th.className = "merged-analysis-head";
-    th.textContent = label;
+    const labelWrap = document.createElement("div");
+    labelWrap.className = "merged-head-label";
+    labelWrap.textContent = label;
+    th.appendChild(labelWrap);
+    if (key === "category") {
+      const categoryFilter = document.createElement("select");
+      categoryFilter.className = "column-filter-select";
+      ["全部", ...strictCategoryOptions].forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        categoryFilter.appendChild(option);
+      });
+      categoryFilter.value = state.layeredFilter || "全部";
+      categoryFilter.addEventListener("change", () => setLayeredFilter(categoryFilter.value));
+      th.appendChild(categoryFilter);
+    }
     if (key !== "actions") th.appendChild(createResizeHandle(key, tableWrap));
     headRow.appendChild(th);
   });
@@ -957,18 +1109,6 @@ function createMergedSection(rows) {
     const tr = document.createElement("tr");
     const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
-    const categoryWrap = document.createElement("div");
-    categoryWrap.className = "merged-cell-stack";
-    const categoryFilter = document.createElement("select");
-    categoryFilter.className = "column-filter-select";
-    ["全部", ...strictCategoryOptions].forEach((value) => {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = value;
-      categoryFilter.appendChild(option);
-    });
-    categoryFilter.value = state.layeredFilter || "全部";
-    categoryFilter.addEventListener("change", () => setLayeredFilter(categoryFilter.value));
     const categorySelect = document.createElement("select");
     ["", ...strictCategoryOptions].forEach((value) => {
       const option = document.createElement("option");
@@ -986,25 +1126,21 @@ function createMergedSection(rows) {
     categorySelect.dataset.layeredField = "category";
     categorySelect.addEventListener("change", () => {
       if (categorySelect.value !== "__custom__") return;
-        const customValue = window.prompt("输入自定义分类名称", row.category || "");
-        if (customValue && customValue.trim()) {
-          const nextValue = normalizeCategoryLabel(customValue.trim()) || customValue.trim();
-          if (hiddenCategoryOptions.has(nextValue)) {
-            categorySelect.value = row.category || "";
-            return;
-          }
+      const customValue = window.prompt("输入自定义分类名称", row.category || "");
+      if (customValue && customValue.trim()) {
+        const nextValue = customValue.trim();
+        if (!Array.from(categorySelect.options).some((option) => option.value === nextValue)) {
           const option = document.createElement("option");
           option.value = nextValue;
           option.textContent = nextValue;
           categorySelect.insertBefore(option, customOption);
-          categorySelect.value = nextValue;
+        }
+        categorySelect.value = nextValue;
       } else {
         categorySelect.value = row.category || "";
       }
     });
-    categoryWrap.appendChild(categoryFilter);
-    categoryWrap.appendChild(categorySelect);
-    categoryCell.appendChild(categoryWrap);
+    categoryCell.appendChild(categorySelect);
     tr.appendChild(categoryCell);
 
     ["subtype", "owner", "reason", "basis", "method", "result"].forEach((field) => {
@@ -1236,14 +1372,13 @@ async function saveAnalysisSummary() {
 
 function renderSerialLiveOutput() {
   const status = state.serialStatus || {};
-  if (!state.activeSessionDetail) {
+  if (!state.activeSessionDetail || !status.running || !status.evidenceId) {
     elements.serialLiveOutput.value = "";
     return;
   }
-  const serialEvidence = (state.activeSessionDetail.evidence || []).find((item) => item.id === status.evidenceId)
-    || (state.activeSessionDetail.evidence || []).find((item) => item.kind === "serial_log");
-  const lines = String(serialEvidence?.contentText || "").split(/\r?\n/).filter(Boolean);
-  elements.serialLiveOutput.value = lines.slice(-10).join("\n");
+  const serialEvidence = (state.activeSessionDetail.evidence || []).find((item) => item.id === status.evidenceId);
+  elements.serialLiveOutput.value = String(serialEvidence?.contentText || "");
+  elements.serialLiveOutput.scrollTop = elements.serialLiveOutput.scrollHeight;
 }
 
 async function loadSerialPorts() {
@@ -1317,7 +1452,7 @@ async function stopSerialCapture() {
 }
 
 function enhanceCollapsibleSections() {
-  document.querySelectorAll(".panel, .stack-card, .subpanel-inline").forEach((container) => {
+  document.querySelectorAll(".panel, .stack-card, .subpanel-inline, .serial-capture-card").forEach((container) => {
     if (container.dataset.collapsibleReady === "1") return;
     let head = container.querySelector(":scope > .panel-head");
     if (!head) {
@@ -1352,6 +1487,9 @@ function enhanceCollapsibleSections() {
       toggleCollapsed();
     });
     container.dataset.collapsibleReady = "1";
+    if (container.classList.contains("serial-capture-card") && !container.classList.contains("collapsed")) {
+      toggleCollapsed();
+    }
   });
 }
 
@@ -1497,7 +1635,7 @@ function createReadonlyMergedSection(rows) {
   section.className = "editable-analysis-section";
   const header = document.createElement("div");
   header.className = "section-header";
-  header.innerHTML = "<h4>分析与验证</h4>";
+  header.innerHTML = "<h4>02 分析与验证</h4>";
   section.appendChild(header);
 
   const tableWrap = document.createElement("div");
@@ -1870,6 +2008,10 @@ async function loadKnowledgeSchema() {
 function bindEvents() {
   elements.navItems.forEach((item) => item.addEventListener("click", () => setCurrentView(item.dataset.view)));
   elements.saveProviderBtn.addEventListener("click", () => saveProviderConfig().catch(showGenericError));
+  elements.providerNewProfileBtn.addEventListener("click", beginNewProviderProfile);
+  elements.providerProfileSelect.addEventListener("change", () => {
+    selectProviderProfile(elements.providerProfileSelect.value).catch(showGenericError);
+  });
   elements.createSessionBtn.addEventListener("click", () => createSession().catch(showGenericError));
   elements.saveSessionMetaBtn.addEventListener("click", () => saveSessionMeta().catch(showGenericError));
   elements.deleteSessionBtn.addEventListener("click", () => deleteSession().catch(showGenericError));
@@ -1896,6 +2038,9 @@ function bindEvents() {
   elements.refreshSerialPortsBtn.addEventListener("click", () => loadSerialPorts().catch(showGenericError));
   elements.startSerialCaptureBtn.addEventListener("click", () => startSerialCapture().catch(showGenericError));
   elements.stopSerialCaptureBtn.addEventListener("click", () => stopSerialCapture().catch(showGenericError));
+  elements.clearSerialOutputBtn.addEventListener("click", () => {
+    elements.serialLiveOutput.value = "";
+  });
   elements.closeAnalysisHistoryModalBtn.addEventListener("click", closeAnalysisHistoryModal);
   elements.analysisHistoryModal.addEventListener("click", (event) => {
     if (event.target === elements.analysisHistoryModal) closeAnalysisHistoryModal();
@@ -1909,6 +2054,7 @@ function bindEvents() {
 
 bindEvents();
 enhanceCollapsibleSections();
+setupHistoryTableResizing();
 resetWorkflow();
 setCurrentView("analysis");
 ensureSerialPolling();
