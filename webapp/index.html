@@ -31,7 +31,7 @@
           <strong id="provider-model">-</strong>
         </div>
         <div class="status-row">
-          <span>当前 Session</span>
+          <span>当前问题</span>
           <strong id="active-session-label">未选择</strong>
         </div>
       </section>
@@ -96,38 +96,41 @@
         <section id="view-analysis" class="view-page active">
           <section class="panel">
             <div class="panel-head">
-              <h3>当前会话</h3>
-              <span class="helper">会话管理和总览信息已并入分析页</span>
+              <h3>问题经验列表</h3>
+              <span class="helper">左侧按项目归类，右侧显示当前项目下的问题列表</span>
             </div>
             <div id="overview-counts" class="overview-grid"></div>
-            <div class="session-inline-grid project-inline-grid">
-              <label>所属项目
-                <select id="project-select"></select>
-              </label>
-              <label>新项目名称
-                <input id="project-name" type="text" placeholder="例如 客户A-电源板 EVT1">
-              </label>
-            </div>
-            <div class="inline-actions">
-              <button id="create-project-btn" type="button">新建项目</button>
-            </div>
-            <div class="session-inline-grid">
-              <label>会话标题<input id="session-title" type="text" placeholder="例如 客户A 首轮联调"></label>
-              <label>客户名称<input id="session-customer" type="text" placeholder="例如 客户A"></label>
-              <label>设备型号<input id="device-model" type="text" placeholder="例如 ESP32-CAM"></label>
-              <label>序号<input id="serial-number" type="text" placeholder="例如 SN-2026-0001"></label>
-            </div>
-            <div class="inline-actions">
-              <button id="create-session-btn" type="button">创建新会话</button>
-              <button id="save-session-meta-btn" type="button">保存当前会话</button>
-              <button id="delete-session-btn" type="button">删除当前会话</button>
-            </div>
-            <div class="subpanel-inline">
-              <div class="panel-head compact-head">
-                <h4>历史会话</h4>
-                <span class="helper" id="session-count">0 条</span>
-              </div>
-              <div id="session-list" class="list-stack compact-list"></div>
+            <div class="project-problem-board">
+              <section class="subpanel-inline">
+                <div class="panel-head compact-head">
+                  <h4>项目</h4>
+                  <span class="helper" id="project-count">0 个</span>
+                </div>
+                <div class="project-create-row">
+                  <input id="project-name" type="text" placeholder="例如 客户A-电源板 EVT1">
+                  <button id="create-project-btn" type="button">新建项目</button>
+                </div>
+                <div id="project-list" class="list-stack compact-list"></div>
+                <select id="project-select" class="hidden"></select>
+              </section>
+              <section class="subpanel-inline">
+                <div class="panel-head compact-head">
+                  <h4>问题</h4>
+                  <span class="helper" id="session-count">0 条</span>
+                </div>
+                <div class="session-inline-grid single-row-grid">
+                  <label>问题标题<input id="session-title" type="text" placeholder="例如 客户A 首轮联调"></label>
+                  <label>客户名称<input id="session-customer" type="text" placeholder="例如 客户A"></label>
+                  <label>设备型号<input id="device-model" type="text" placeholder="例如 ESP32-CAM"></label>
+                  <label>序号<input id="serial-number" type="text" placeholder="例如 SN-2026-0001"></label>
+                </div>
+                <div class="inline-actions">
+                  <button id="create-session-btn" type="button">新建问题</button>
+                  <button id="save-session-meta-btn" type="button">保存当前问题</button>
+                  <button id="delete-session-btn" type="button">删除当前问题</button>
+                </div>
+                <div id="session-list" class="list-stack compact-list"></div>
+              </section>
             </div>
           </section>
 
@@ -182,20 +185,19 @@
             </div>
             <article class="stack-card">
               <h4>A. 资料导入</h4>
-              <label>标题<input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述"></label>
-              <label>文件<input id="material-file" type="file" multiple></label>
-              <button id="upload-material-btn" type="button">上传资料</button>
-              <p id="material-result" class="helper">优先导入规格书、数据手册、客户测试报告、图片、原理图片段等。资料越接近现场事实，后面的分析越可靠。</p>
-            </article>
-
-            <div class="evidence-summary">
-              <div class="panel-head compact-head">
-                <span class="helper">A 栏资料</span>
-                <span id="evidence-count" class="helper">0 条</span>
+              <div class="simple-upload-row">
+                <input id="material-file" type="file" multiple>
+                <button id="upload-material-btn" type="button">导入资料</button>
               </div>
-              <div id="evidence-inline-list" class="evidence-manage-list"></div>
-            </div>
-
+              <div class="evidence-summary inside-summary">
+                <div class="panel-head compact-head">
+                  <span class="helper">A 栏资料</span>
+                  <span id="evidence-count" class="helper">0 条</span>
+                </div>
+                <div id="evidence-inline-list" class="evidence-manage-list"></div>
+              </div>
+              <p id="material-result" class="helper">仅用于当前选中项目的资料沉淀，文件名会保留，后续可按项目切换查看。</p>
+            </article>
             <article class="stack-card">
               <h4>B. 问题描述 / 测试报告 / 图片 / 日志</h4>
               <label>标题<input id="info-title" type="text" placeholder="例如 现场观察 / 测试报告 / 异常截图 / 串口日志"></label>

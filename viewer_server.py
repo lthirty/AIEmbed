@@ -23,7 +23,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.22.9"
+APP_VERSION = "v0.22.10"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -988,6 +988,29 @@ def list_projects() -> list[dict]:
         conn.close()
 
 
+def list_project_materials(project_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT evidence.*, sessions.title AS session_title
+            FROM evidence
+            JOIN sessions ON sessions.id = evidence.session_id
+            WHERE sessions.project_id = ? AND evidence.kind = 'material'
+            ORDER BY evidence.created_at DESC
+            """,
+            (project_id,),
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = evidence_to_dict(row)
+            item["sessionTitle"] = row["session_title"]
+            result.append(item)
+        return result
+    finally:
+        conn.close()
+
+
 def delete_evidence(evidence_id: str) -> str:
     session_id = ""
     file_path = ""
@@ -1731,6 +1754,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "result": str(row.get("result") or "").strip(),
                     "rowHeight": int(row.get("rowHeight") or 0),
                     "childLevel": int(row.get("childLevel") or 0),
+                    "groupKey": str(row.get("groupKey") or "").strip(),
                 }
             )
 
@@ -1756,6 +1780,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "result": result_text or "暂无分析结果",
                     "rowHeight": 0,
                     "childLevel": 0,
+                    "groupKey": "",
                 }
             )
 
@@ -1777,6 +1802,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
             row["result"] = "暂无分析结果"
         row["rowHeight"] = int(row.get("rowHeight") or 0)
         row["childLevel"] = int(row.get("childLevel") or 0)
+        row["groupKey"] = str(row.get("groupKey") or "").strip()
 
     existing_categories = {row.get("category", "") for row in normalized_rows if row.get("category")}
     for category in DEFAULT_ANALYSIS_DIMENSIONS:
@@ -1793,6 +1819,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
                     "result": "暂无分析结果",
                     "rowHeight": 0,
                     "childLevel": 0,
+                    "groupKey": "",
                 }
             )
 
@@ -1846,6 +1873,7 @@ def enforce_evidence_basis(result_json: dict, session_payload: dict) -> dict:
                     "result": "暂无分析结果",
                     "rowHeight": 0,
                     "childLevel": 0,
+                    "groupKey": "",
                 }
             )
             continue
@@ -3092,6 +3120,13 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 },
             )
             return
+
+        if path.startswith("/api/projects/") and path.endswith("/materials"):
+            parts = path.split("/")
+            if len(parts) >= 5:
+                project_id = parts[3]
+                self.send_json(200, {"materials": list_project_materials(project_id)})
+                return
 
         if path == "/api/sessions":
             query = urllib.parse.parse_qs(parsed.query)

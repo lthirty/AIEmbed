@@ -20,7 +20,9 @@ const elements = {
   pageTitle: document.getElementById("page-title"),
   pageSubtitle: document.getElementById("page-subtitle"),
   overviewCounts: document.getElementById("overview-counts"),
+  projectCount: document.getElementById("project-count"),
   sessionCount: document.getElementById("session-count"),
+  projectList: document.getElementById("project-list"),
   sessionList: document.getElementById("session-list"),
   projectSelect: document.getElementById("project-select"),
   projectName: document.getElementById("project-name"),
@@ -32,7 +34,6 @@ const elements = {
   createSessionBtn: document.getElementById("create-session-btn"),
   saveSessionMetaBtn: document.getElementById("save-session-meta-btn"),
   deleteSessionBtn: document.getElementById("delete-session-btn"),
-  materialTitle: document.getElementById("material-title"),
   materialFile: document.getElementById("material-file"),
   uploadMaterialBtn: document.getElementById("upload-material-btn"),
   materialResult: document.getElementById("material-result"),
@@ -111,6 +112,7 @@ const state = {
   apiConfigured: false,
   overview: null,
   projects: [],
+  projectMaterials: [],
   activeProjectId: "",
   sessions: [],
   activeSessionId: "",
@@ -154,7 +156,7 @@ const state = {
 };
 
 const workflowTemplate = [
-  { key: "session", name: "读取资料与会话", state: "pending", detail: "等待开始" },
+  { key: "session", name: "读取资料与问题", state: "pending", detail: "等待开始" },
   { key: "provider", name: "校验 AI 配置", state: "pending", detail: "等待开始" },
   { key: "request", name: "发送分析请求", state: "pending", detail: "等待开始" },
   { key: "response", name: "写入分析结果", state: "pending", detail: "等待开始" },
@@ -197,7 +199,7 @@ function showGenericError(error) {
 }
 
 function requireSession() {
-  if (!state.activeSessionId) throw new Error("请先创建或选择一个会话。");
+  if (!state.activeSessionId) throw new Error("请先创建或选择一个问题。");
 }
 
 async function apiGet(url) {
@@ -357,7 +359,7 @@ async function loadOverview() {
   state.overview = await apiGet("/api/workbench/overview");
   const counts = state.overview?.counts || {};
   const items = [
-    ["总会话数", counts.sessions || 0],
+    ["总问题数", counts.sessions || 0],
     ["未关闭问题", counts.openSessions || 0],
     ["分析记录数", counts.analyses || 0],
     ["证据条目数", counts.evidence || 0],
@@ -389,15 +391,42 @@ function renderProjectOptions() {
   elements.projectSelect.value = state.activeProjectId || state.projects[0]?.id || "";
 }
 
+function renderProjectList() {
+  elements.projectCount.textContent = `${state.projects.length} 个`;
+  elements.projectList.innerHTML = "";
+  if (!state.projects.length) {
+    elements.projectList.innerHTML = '<p class="helper">还没有项目，请先新建项目。</p>';
+    return;
+  }
+  state.projects.forEach((project) => {
+    const article = document.createElement("article");
+    article.className = `list-item compact-row selectable ${project.id === state.activeProjectId ? "active" : ""}`;
+    article.innerHTML = `
+      <strong>${project.name}</strong>
+      <span class="item-meta">${project.description || "未填写说明"} · ${project.updatedAt || ""}</span>
+    `;
+    article.addEventListener("click", () => {
+      state.activeProjectId = project.id;
+      state.activeSessionId = "";
+      renderProjectOptions();
+      renderProjectList();
+      loadSessions().catch(showGenericError);
+    });
+    elements.projectList.appendChild(article);
+  });
+}
+
 async function loadProjects() {
   const data = await apiGet("/api/projects");
   state.projects = data.projects || [];
+  state.projectMaterials = [];
   if (!state.projects.length) {
     state.activeProjectId = "";
   } else if (!state.activeProjectId || !state.projects.some((project) => project.id === state.activeProjectId)) {
     state.activeProjectId = data.activeProjectId || state.projects[0].id;
   }
   renderProjectOptions();
+  renderProjectList();
 }
 
 async function createProject() {
@@ -423,7 +452,7 @@ function renderSessionList() {
   elements.sessionCount.textContent = `${state.sessions.length} 条`;
   elements.sessionList.innerHTML = "";
   if (!state.sessions.length) {
-    elements.sessionList.innerHTML = '<p class="helper">还没有历史会话。</p>';
+    elements.sessionList.innerHTML = '<p class="helper">当前项目下还没有问题。</p>';
     return;
   }
   state.sessions.forEach((session) => {
@@ -457,6 +486,7 @@ async function loadSessions() {
   if (state.activeSessionId) {
     await loadSessionDetail(state.activeSessionId);
   } else {
+    await loadProjectMaterials();
     renderReadableAnalysis(null);
     renderEvidenceList();
   }
@@ -467,7 +497,7 @@ async function createSession(options = {}) {
   if (!state.activeProjectId) throw new Error("请先创建并选择一个项目。");
   const data = await apiPost("/api/sessions", {
     projectId: state.activeProjectId,
-    title: title || elements.sessionTitle.value.trim() || "客户调试会话",
+    title: title || elements.sessionTitle.value.trim() || "客户调试问题",
     customerName: elements.sessionCustomer.value.trim(),
     deviceModel: elements.deviceModel.value.trim(),
     serialNumber: elements.serialNumber.value.trim(),
@@ -480,7 +510,7 @@ async function createSession(options = {}) {
   });
   state.activeSessionId = data.session.id;
   if (!silent) {
-    elements.analysisStatus.textContent = "会话已创建。";
+    elements.analysisStatus.textContent = "问题已创建。";
     elements.analysisStatus.classList.remove("error");
   }
   await Promise.all([loadOverview(), loadSessions(), loadKnowledge()]);
@@ -490,9 +520,9 @@ async function ensureAutoSessionOnEntry() {
   if (sessionStorage.getItem(AUTO_SESSION_BOOTSTRAP_KEY) === "1") return;
   if (!state.activeProjectId) return;
   sessionStorage.setItem(AUTO_SESSION_BOOTSTRAP_KEY, "1");
-  const autoTitle = `新会话 ${new Date().toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")}`;
+  const autoTitle = `新问题 ${new Date().toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-")}`;
   await createSession({ title: autoTitle, silent: true });
-  elements.analysisStatus.textContent = `已自动新建会话：${autoTitle}`;
+  elements.analysisStatus.textContent = `已自动新建问题：${autoTitle}`;
   elements.analysisStatus.classList.remove("error");
 }
 
@@ -511,21 +541,21 @@ async function saveSessionMeta() {
     owner: state.activeSessionDetail?.owner || "",
     deviceIp: state.activeSessionDetail?.deviceIp || "",
   });
-  elements.analysisStatus.textContent = "当前会话已保存。";
+  elements.analysisStatus.textContent = "当前问题已保存。";
   elements.analysisStatus.classList.remove("error");
   await Promise.all([loadOverview(), loadSessions(), loadKnowledge()]);
 }
 
 async function deleteSession() {
   requireSession();
-  if (!window.confirm("确定删除当前会话及其证据、分析和步骤吗？")) return;
+  if (!window.confirm("确定删除当前问题及其证据、分析和步骤吗？")) return;
   const response = await fetch(`/api/sessions/${state.activeSessionId}`, { method: "DELETE" });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "delete failed");
   state.activeSessionId = "";
   state.activeSessionDetail = null;
   state.latestAnalysis = null;
-  elements.analysisStatus.textContent = "当前会话已删除。";
+  elements.analysisStatus.textContent = "当前问题已删除。";
   elements.analysisStatus.classList.remove("error");
   await Promise.all([loadOverview(), loadSessions(), loadKnowledge()]);
 }
@@ -576,16 +606,15 @@ async function uploadMaterial() {
   for (const file of files) {
     const formData = new FormData();
     formData.append("sessionId", state.activeSessionId);
-    formData.append("title", elements.materialTitle.value.trim());
+    formData.append("title", "");
     formData.append("file", file);
     const response = await fetch("/api/upload", { method: "POST", body: formData });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "upload failed");
   }
   elements.materialResult.textContent = `资料已导入：${files.length} 个文件`;
-  elements.materialTitle.value = "";
   elements.materialFile.value = "";
-  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadProjectMaterials()]);
 }
 
 async function saveImportedInfo() {
@@ -627,7 +656,7 @@ async function deleteEvidence(evidenceId) {
   const response = await fetch(`/api/evidence/${evidenceId}`, { method: "DELETE" });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "delete failed");
-  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
+  await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId), loadProjectMaterials()]);
 }
 
 function renderEvidenceTokens(container, items, emptyText) {
@@ -679,13 +708,71 @@ function renderEvidenceTokens(container, items, emptyText) {
   });
 }
 
+function renderProjectMaterialTokens(container, items, emptyText) {
+  container.innerHTML = "";
+  if (!items.length) {
+    container.innerHTML = `<p class="helper evidence-empty-message">${emptyText}</p>`;
+    return;
+  }
+  const groups = new Map();
+  items.forEach((item) => {
+    const key = item.sessionTitle || "未归类问题";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+  groups.forEach((groupItems, groupTitle) => {
+    const group = document.createElement("section");
+    group.className = "project-material-group";
+    const title = document.createElement("div");
+    title.className = "project-material-title";
+    title.textContent = groupTitle;
+    group.appendChild(title);
+    const tokenWrap = document.createElement("div");
+    tokenWrap.className = "project-material-tokens";
+    groupItems.forEach((item) => {
+      const token = document.createElement("article");
+      token.className = "evidence-token";
+      const browseLink = document.createElement("a");
+      browseLink.href = item.fileUrl || "#";
+      browseLink.target = "_blank";
+      browseLink.rel = "noopener noreferrer";
+      browseLink.className = "evidence-token-label";
+      browseLink.title = item.fileName || item.title || "未命名资料";
+      browseLink.textContent = item.fileName || item.title || "未命名资料";
+      if (!item.fileUrl) {
+        browseLink.removeAttribute("href");
+        browseLink.removeAttribute("target");
+        browseLink.removeAttribute("rel");
+        browseLink.classList.add("disabled");
+      }
+      token.appendChild(browseLink);
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "danger-button";
+      delBtn.textContent = "删除";
+      delBtn.addEventListener("click", () => deleteEvidence(item.id).catch(showGenericError));
+      token.appendChild(delBtn);
+      tokenWrap.appendChild(token);
+    });
+    group.appendChild(tokenWrap);
+    container.appendChild(group);
+  });
+}
+
+async function loadProjectMaterials() {
+  if (!state.activeProjectId) {
+    state.projectMaterials = [];
+    return;
+  }
+  const data = await apiGet(`/api/projects/${encodeURIComponent(state.activeProjectId)}/materials`);
+  state.projectMaterials = data.materials || [];
+}
+
 function renderEvidenceList() {
-  const evidence = state.activeSessionDetail?.evidence || [];
-  const materialEvidence = evidence.filter((item) => item.kind === "material");
-  const infoEvidence = evidence.filter((item) => item.kind !== "material");
-  elements.evidenceCount.textContent = `${materialEvidence.length} 条`;
+  const infoEvidence = (state.activeSessionDetail?.evidence || []).filter((item) => item.kind !== "material");
+  elements.evidenceCount.textContent = `${state.projectMaterials.length} 条`;
   elements.infoEvidenceCount.textContent = `${infoEvidence.length} 条`;
-  renderEvidenceTokens(elements.evidenceInlineList, materialEvidence, `A 栏资料 ${materialEvidence.length} 条${materialEvidence.length ? "" : "，A 栏当前还没有导入资料。"}`);
+  renderProjectMaterialTokens(elements.evidenceInlineList, state.projectMaterials, `A 栏资料 ${state.projectMaterials.length} 条${state.projectMaterials.length ? "" : "，A 栏当前还没有导入资料。"}`);
   renderEvidenceTokens(elements.infoEvidenceInlineList, infoEvidence, `B 栏资料 ${infoEvidence.length} 条${infoEvidence.length ? "" : "，B 栏当前还没有导入问题信息、图片或日志。"}`);
 }
 
@@ -695,6 +782,7 @@ async function loadSessionDetail(sessionId) {
   if (data.projectId) {
     state.activeProjectId = data.projectId;
     renderProjectOptions();
+    renderProjectList();
   }
   const index = state.sessions.findIndex((item) => item.id === data.id);
   if (index >= 0) {
@@ -707,6 +795,7 @@ async function loadSessionDetail(sessionId) {
   state.layeredFilter = "全部";
   renderSessionMetaSummary();
   renderSessionList();
+  await loadProjectMaterials();
   renderEvidenceList();
   renderAnalyses(data.analyses || []);
   renderSerialLiveOutput();
@@ -753,10 +842,10 @@ async function runAnalysis() {
   if (!state.apiConfigured) throw new Error("请先完成 AI 验证。");
   validateAnalysisPrerequisites();
   resetWorkflow();
-  updateWorkflow("session", "running", "正在读取当前会话、资料、附件和历史分析...");
+  updateWorkflow("session", "running", "正在读取当前问题、资料、附件和历史分析...");
   updateWorkflow("provider", "running", "正在校验当前 AI 设置...");
   try {
-    updateWorkflow("session", "success", `已读取会话 ${state.activeSessionId}。`);
+    updateWorkflow("session", "success", `已读取问题 ${state.activeSessionId}。`);
     await validateSavedProvider();
     if (!state.apiConfigured) throw new Error("当前 AI 设置校验未通过，请先修正。");
     updateWorkflow("provider", "success", "AI 配置可用。");
@@ -833,11 +922,12 @@ function buildMergedRows(result) {
       result: String(row?.result || "").trim() || "暂无分析结果",
       rowHeight: Number(row?.rowHeight || 0),
       childLevel: Number(row?.childLevel || 0),
+      groupKey: String(row?.groupKey || "").trim() || `group-${index}-${Math.random().toString(36).slice(2, 8)}`,
     }));
     const existing = new Set(normalized.map((row) => String(row?.category || "").trim()).filter(Boolean));
     defaultAnalysisDimensions.forEach((category) => {
       if (!existing.has(category)) {
-        normalized.push({ category, subtype: "", owner: "待定", phenomenon: phenomenonItems[normalized.length] || "暂无分析结果", reason: "暂无分析结果", basis: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果", rowHeight: 0, childLevel: 0 });
+        normalized.push({ category, subtype: "", owner: "待定", phenomenon: phenomenonItems[normalized.length] || "暂无分析结果", reason: "暂无分析结果", basis: "暂无分析结果", method: "暂无分析结果", result: "暂无分析结果", rowHeight: 0, childLevel: 0, groupKey: `group-${category}-${normalized.length}` });
       }
     });
     return normalized;
@@ -861,6 +951,7 @@ function buildMergedRows(result) {
       result: validation.expected_result || "暂无分析结果",
       rowHeight: 0,
       childLevel: 0,
+      groupKey: `group-${fallbackCategory || index}-${Math.random().toString(36).slice(2, 8)}`,
     });
   }
   return rows;
@@ -1116,6 +1207,32 @@ function syncMergedTableRowHeights(root = document) {
   });
 }
 
+function createRowHeightHandle(rowIndex, tr, root) {
+  const handle = document.createElement("div");
+  handle.className = "row-height-handle";
+  handle.title = "拖动调整本行高度";
+  handle.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = Number(tr.dataset.rowHeight || tr.getBoundingClientRect().height || 72);
+    const onMove = (moveEvent) => {
+      const nextHeight = Math.max(48, Math.round(startHeight + moveEvent.clientY - startY));
+      tr.dataset.rowHeight = String(nextHeight);
+      if (state.latestAnalysis?.result?.layered_validation_rows?.[rowIndex]) {
+        state.latestAnalysis.result.layered_validation_rows[rowIndex].rowHeight = nextHeight;
+      }
+      syncMergedTableRowHeights(root);
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+  return handle;
+}
+
 function getAiQaElements() {
   return {
     question: document.getElementById("analysis-ai-qa-question"),
@@ -1179,6 +1296,7 @@ function getDefaultMergedRow(overrides = {}) {
     result: "",
     rowHeight: 0,
     childLevel: 0,
+    groupKey: `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     ...overrides,
   };
 }
@@ -1189,31 +1307,22 @@ function insertMergedChildRow(index) {
   const nextRows = [...buildMergedRows(state.latestAnalysis.result)];
   const base = nextRows[index] || getDefaultMergedRow();
   const child = getDefaultMergedRow({
-    category: base.category,
-    subtype: base.subtype,
-    owner: base.owner,
-    phenomenon: base.phenomenon,
-    reason: base.reason,
-    basis: base.basis,
+    category: "",
+    subtype: "",
+    owner: "",
+    phenomenon: "",
+    reason: "",
+    basis: "",
     method: "",
     result: "",
     rowHeight: base.rowHeight || 0,
     childLevel: 1,
+    groupKey: base.groupKey || `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   });
   nextRows.splice(index + 1, 0, child);
   state.latestAnalysis.result.layered_validation_rows = nextRows;
   state.rowEditState = {};
   state.rowEditState[rowEditKey("layeredValidation", index + 1)] = true;
-  renderReadableAnalysis(state.latestAnalysis);
-}
-
-function adjustMergedRowHeight(index, delta) {
-  if (!state.latestAnalysis) return;
-  syncAnalysisDraftToState();
-  const nextRows = [...buildMergedRows(state.latestAnalysis.result)];
-  if (!nextRows[index]) return;
-  nextRows[index].rowHeight = Math.max(48, Number(nextRows[index].rowHeight || 0) + delta);
-  state.latestAnalysis.result.layered_validation_rows = nextRows;
   renderReadableAnalysis(state.latestAnalysis);
 }
 
@@ -1310,9 +1419,11 @@ function createMergedSection(rows) {
   values.forEach((row, index) => {
     const sourceIndex = Number.isInteger(row.__sourceIndex) ? row.__sourceIndex : index;
     const editable = isRowEditing("layeredValidation", sourceIndex);
+    const isChildRow = Number(row.childLevel || 0) > 0;
     const tr = document.createElement("tr");
     tr.dataset.rowHeight = String(Number(row.rowHeight || 0));
-    tr.classList.toggle("child-row", Number(row.childLevel || 0) > 0);
+    tr.classList.toggle("child-row", isChildRow);
+    tr.dataset.groupKey = row.groupKey || "";
     const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
     const categorySelect = document.createElement("select");
@@ -1326,8 +1437,8 @@ function createMergedSection(rows) {
     customOption.value = "__custom__";
     customOption.textContent = "自定义...";
     categorySelect.appendChild(customOption);
-    categorySelect.value = row.category && strictCategoryOptions.includes(row.category) ? row.category : (row.category ? row.category : "");
-    categorySelect.disabled = !editable;
+    categorySelect.value = row.category && strictCategoryOptions.includes(row.category) ? row.category : "";
+    categorySelect.disabled = !editable || isChildRow;
     categorySelect.dataset.layeredRow = String(sourceIndex);
     categorySelect.dataset.layeredField = "category";
     categorySelect.addEventListener("change", () => {
@@ -1340,12 +1451,20 @@ function createMergedSection(rows) {
         categorySelect.value = row.category || "";
       }
     });
+    if (isChildRow) {
+      categoryCell.classList.add("child-link-cell");
+      const childHint = document.createElement("span");
+      childHint.className = "child-link-badge";
+      childHint.textContent = "↳ 子行";
+      categoryCell.appendChild(childHint);
+    }
     categoryCell.appendChild(categorySelect);
     tr.appendChild(categoryCell);
 
     ["subtype", "owner", "phenomenon", "reason", "basis", "method", "result"].forEach((field) => {
       const td = document.createElement("td");
       const control = document.createElement(field === "owner" ? "input" : "textarea");
+      const inheritedChildField = isChildRow && ["subtype", "owner", "phenomenon", "reason", "basis"].includes(field);
       if (field === "owner") {
         control.type = "text";
       } else if (field === "subtype") {
@@ -1356,7 +1475,11 @@ function createMergedSection(rows) {
       control.value = row[field] || "";
       control.dataset.layeredRow = String(sourceIndex);
       control.dataset.layeredField = field;
-      control.readOnly = !editable;
+      control.readOnly = !editable || inheritedChildField;
+      if (inheritedChildField) {
+        control.placeholder = "沿用父行";
+        td.classList.add("child-inherited-cell");
+      }
       control.className = field === "owner" ? "merged-analysis-input" : "merged-analysis-textarea";
       control.addEventListener("input", () => syncMergedTableRowHeights(section));
       td.appendChild(control);
@@ -1377,11 +1500,11 @@ function createMergedSection(rows) {
     upBtn.textContent = "上移";
     upBtn.disabled = sourceIndex === 0;
     upBtn.addEventListener("click", () => moveMergedRow(sourceIndex, -1));
-    const downBtn = document.createElement("button");
-    downBtn.type = "button";
-    downBtn.className = "secondary-button";
-    downBtn.textContent = "下移";
-    downBtn.disabled = sourceIndex === allRows.length - 1;
+      const downBtn = document.createElement("button");
+      downBtn.type = "button";
+      downBtn.className = "secondary-button";
+      downBtn.textContent = "下移";
+      downBtn.disabled = sourceIndex === allRows.length - 1;
     downBtn.addEventListener("click", () => moveMergedRow(sourceIndex, 1));
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
@@ -1401,23 +1524,12 @@ function createMergedSection(rows) {
     childBtn.className = "secondary-button";
     childBtn.textContent = "新增子行";
     childBtn.addEventListener("click", () => insertMergedChildRow(sourceIndex));
-    const tallerBtn = document.createElement("button");
-    tallerBtn.type = "button";
-    tallerBtn.className = "secondary-button";
-    tallerBtn.textContent = "增高";
-    tallerBtn.addEventListener("click", () => adjustMergedRowHeight(sourceIndex, 36));
-    const shorterBtn = document.createElement("button");
-    shorterBtn.type = "button";
-    shorterBtn.className = "secondary-button";
-    shorterBtn.textContent = "减矮";
-    shorterBtn.addEventListener("click", () => adjustMergedRowHeight(sourceIndex, -36));
     actions.appendChild(upBtn);
     actions.appendChild(downBtn);
     actions.appendChild(childBtn);
-    actions.appendChild(tallerBtn);
-    actions.appendChild(shorterBtn);
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
+    actions.appendChild(createRowHeightHandle(sourceIndex, tr, section));
     actionCell.appendChild(actions);
     tr.appendChild(actionCell);
     tbody.appendChild(tr);
@@ -1453,10 +1565,11 @@ function collectMergedRows() {
     if (!map.has(rowIndex)) map.set(rowIndex, getDefaultMergedRow());
     map.get(rowIndex).rowHeight = Number(row.dataset.rowHeight || "0");
     map.get(rowIndex).childLevel = row.classList.contains("child-row") ? 1 : Number(map.get(rowIndex).childLevel || 0);
+    map.get(rowIndex).groupKey = row.dataset.groupKey || map.get(rowIndex).groupKey || "";
   });
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([, value]) => ({ category: value.category, subtype: value.subtype, owner: value.owner, phenomenon: value.phenomenon, reason: value.reason, basis: value.basis, method: value.method, result: value.result, rowHeight: Number(value.rowHeight || 0), childLevel: Number(value.childLevel || 0) }))
+    .map(([, value]) => ({ category: value.category, subtype: value.subtype, owner: value.owner, phenomenon: value.phenomenon, reason: value.reason, basis: value.basis, method: value.method, result: value.result, rowHeight: Number(value.rowHeight || 0), childLevel: Number(value.childLevel || 0), groupKey: value.groupKey || "" }))
     .filter((row) => Object.values(row).some(Boolean));
 }
 
