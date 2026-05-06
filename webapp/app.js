@@ -114,6 +114,7 @@ const state = {
   serialPorts: [],
   serialStatus: null,
   serialPollTimer: null,
+  layeredFilter: "全部",
   mergedColumnWidths: {
     category: 120,
     owner: 120,
@@ -419,16 +420,18 @@ async function saveProviderConfig() {
 
 async function uploadMaterial() {
   requireSession();
-  const file = elements.materialFile.files[0];
-  if (!file) throw new Error("请选择要上传的资料文件。");
-  const formData = new FormData();
-  formData.append("sessionId", state.activeSessionId);
-  formData.append("title", elements.materialTitle.value.trim());
-  formData.append("file", file);
-  const response = await fetch("/api/upload", { method: "POST", body: formData });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "upload failed");
-  elements.materialResult.textContent = `资料已导入：${data.evidence.title}`;
+  const files = Array.from(elements.materialFile.files || []);
+  if (!files.length) throw new Error("请选择要上传的资料文件。");
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append("sessionId", state.activeSessionId);
+    formData.append("title", elements.materialTitle.value.trim());
+    formData.append("file", file);
+    const response = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "upload failed");
+  }
+  elements.materialResult.textContent = `资料已导入：${files.length} 个文件`;
   elements.materialTitle.value = "";
   elements.materialFile.value = "";
   await Promise.all([loadOverview(), loadSessionDetail(state.activeSessionId)]);
@@ -437,17 +440,30 @@ async function uploadMaterial() {
 async function saveImportedInfo() {
   requireSession();
   const content = elements.infoContent.value.trim();
-  const file = elements.infoFile.files[0];
-  if (!content && !file) throw new Error("请先填写问题描述或选择附件。");
-  const formData = new FormData();
-  formData.append("sessionId", state.activeSessionId);
-  formData.append("title", elements.infoTitle.value.trim());
-  formData.append("content", content);
-  if (file) formData.append("file", file);
-  const response = await fetch("/api/info-upload", { method: "POST", body: formData });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "upload failed");
-  elements.infoResult.textContent = `导入完成：${data.evidence.title}`;
+  const files = Array.from(elements.infoFile.files || []);
+  if (!content && !files.length) throw new Error("请先填写问题描述或选择附件。");
+  if (!files.length) {
+    const formData = new FormData();
+    formData.append("sessionId", state.activeSessionId);
+    formData.append("title", elements.infoTitle.value.trim());
+    formData.append("content", content);
+    const response = await fetch("/api/info-upload", { method: "POST", body: formData });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "upload failed");
+    elements.infoResult.textContent = `导入完成：${data.evidence.title}`;
+  } else {
+    for (let index = 0; index < files.length; index += 1) {
+      const formData = new FormData();
+      formData.append("sessionId", state.activeSessionId);
+      formData.append("title", elements.infoTitle.value.trim());
+      formData.append("content", index === 0 ? content : "");
+      formData.append("file", files[index]);
+      const response = await fetch("/api/info-upload", { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "upload failed");
+    }
+    elements.infoResult.textContent = `导入完成：${files.length} 个附件${content ? "，并保留问题描述" : ""}`;
+  }
   elements.infoTitle.value = "";
   elements.infoContent.value = "";
   elements.infoFile.value = "";
@@ -539,7 +555,7 @@ function hasEvidenceReady() {
 function buildDefaultAnalysisPrompt() {
   const lines = [
     "请基于当前会话里的资料、问题描述、测试报告、图片和日志进行结构化分析。",
-    "先完成：01 现象；再完成：02-03 分层分析与验证方法。",
+    "先完成：01 现象；再完成：分析与验证。",
     "分析顺序默认按：硬件 -> 接口 -> 驱动 -> 系统 -> 应用。",
     "请优先说明触发条件、影响范围、复现频率，以及当前证据能支持到哪一层。",
     "04 根因、05 解决方案、06 经验总结先留空，等待人工定位后再补。",
@@ -870,7 +886,7 @@ function createResizeHandle(columnKey, element) {
 function createMergedSection(rows) {
   const section = document.createElement("section");
   section.className = "editable-analysis-section";
-  section.appendChild(createSectionHeader("02-03 分层分析与验证方法", {
+  const header = createSectionHeader("分析与验证", {
     onAdd: () => {
       if (!state.latestAnalysis) return;
       const result = state.latestAnalysis.result;
@@ -880,7 +896,19 @@ function createMergedSection(rows) {
       state.rowEditState[rowEditKey("layeredValidation", nextRows.length - 1)] = true;
       renderReadableAnalysis(state.latestAnalysis);
     },
-  }));
+  });
+  const filterSelect = document.createElement("select");
+  filterSelect.className = "layered-filter-select";
+  ["全部", ...defaultAnalysisDimensions].forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    filterSelect.appendChild(option);
+  });
+  filterSelect.value = state.layeredFilter || "全部";
+  filterSelect.addEventListener("change", () => setLayeredFilter(filterSelect.value));
+  header.querySelector(".inline-actions")?.prepend(filterSelect);
+  section.appendChild(header);
   const tableWrap = document.createElement("div");
   tableWrap.className = "merged-analysis-table-wrap";
   applyMergedColumnWidths(tableWrap);
@@ -914,11 +942,15 @@ function createMergedSection(rows) {
   thead.appendChild(headRow);
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
-  const values = [...rows];
-  if (!values.length) values.push({ category: "", owner: "待定", reason: "", basis: "", method: "", result: "" });
+  const allRows = [...rows];
+  const values = (state.layeredFilter && state.layeredFilter !== "全部"
+    ? allRows.map((row, originalIndex) => ({ ...row, __sourceIndex: originalIndex })).filter((row) => normalizeCategoryLabel(row.category) === state.layeredFilter)
+    : allRows.map((row, originalIndex) => ({ ...row, __sourceIndex: originalIndex })));
+  if (!values.length) values.push({ category: "", owner: "待定", reason: "", basis: "", method: "", result: "", __sourceIndex: allRows.length });
   const builtinCategories = ["", ...defaultAnalysisDimensions];
   values.forEach((row, index) => {
-    const editable = isRowEditing("layeredValidation", index);
+    const sourceIndex = Number.isInteger(row.__sourceIndex) ? row.__sourceIndex : index;
+    const editable = isRowEditing("layeredValidation", sourceIndex);
     const tr = document.createElement("tr");
     const categoryCell = document.createElement("td");
     categoryCell.className = "merged-analysis-cell";
@@ -937,7 +969,7 @@ function createMergedSection(rows) {
     categorySelect.appendChild(customOption);
     categorySelect.value = row.category && availableCategories.includes(row.category) ? row.category : (row.category ? row.category : "");
     categorySelect.disabled = !editable;
-    categorySelect.dataset.layeredRow = String(index);
+    categorySelect.dataset.layeredRow = String(sourceIndex);
     categorySelect.dataset.layeredField = "category";
     categorySelect.addEventListener("change", () => {
       if (categorySelect.value !== "__custom__") return;
@@ -969,7 +1001,7 @@ function createMergedSection(rows) {
         control.rows = field === "reason" || field === "basis" ? 3 : 2;
       }
       control.value = row[field] || "";
-      control.dataset.layeredRow = String(index);
+      control.dataset.layeredRow = String(sourceIndex);
       control.dataset.layeredField = field;
       control.readOnly = !editable;
       control.className = field === "owner" ? "merged-analysis-input" : "merged-analysis-textarea";
@@ -984,30 +1016,30 @@ function createMergedSection(rows) {
     editBtn.type = "button";
     editBtn.className = "secondary-button";
     editBtn.textContent = editable ? "完成" : "编辑";
-    editBtn.addEventListener("click", () => toggleRowEdit("layeredValidation", index).catch(showGenericError));
+    editBtn.addEventListener("click", () => toggleRowEdit("layeredValidation", sourceIndex).catch(showGenericError));
     const upBtn = document.createElement("button");
     upBtn.type = "button";
     upBtn.className = "secondary-button";
     upBtn.textContent = "上移";
-    upBtn.disabled = index === 0;
-    upBtn.addEventListener("click", () => moveMergedRow(index, -1));
+    upBtn.disabled = sourceIndex === 0;
+    upBtn.addEventListener("click", () => moveMergedRow(sourceIndex, -1));
     const downBtn = document.createElement("button");
     downBtn.type = "button";
     downBtn.className = "secondary-button";
     downBtn.textContent = "下移";
-    downBtn.disabled = index === values.length - 1;
-    downBtn.addEventListener("click", () => moveMergedRow(index, 1));
+    downBtn.disabled = sourceIndex === allRows.length - 1;
+    downBtn.addEventListener("click", () => moveMergedRow(sourceIndex, 1));
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "danger-button";
     deleteBtn.textContent = "删除";
     deleteBtn.addEventListener("click", () => {
       if (!state.latestAnalysis) return;
-      if (!window.confirm(`确定删除第 ${index + 1} 行分层分析吗？`)) return;
+      if (!window.confirm(`确定删除第 ${sourceIndex + 1} 行分层分析吗？`)) return;
       const nextRows = [...buildMergedRows(state.latestAnalysis.result)];
-      nextRows.splice(index, 1);
+      nextRows.splice(sourceIndex, 1);
       state.latestAnalysis.result.layered_validation_rows = nextRows;
-      delete state.rowEditState[rowEditKey("layeredValidation", index)];
+      delete state.rowEditState[rowEditKey("layeredValidation", sourceIndex)];
       renderReadableAnalysis(state.latestAnalysis);
     });
     actions.appendChild(upBtn);
@@ -1031,7 +1063,10 @@ function collectListField(key) {
 }
 
 function collectMergedRows() {
-  const map = new Map();
+  const currentRows = Array.isArray(state.latestAnalysis?.result?.layered_validation_rows)
+    ? state.latestAnalysis.result.layered_validation_rows.map((row) => ({ ...row }))
+    : [];
+  const map = new Map(currentRows.map((row, index) => [index, { ...row }]));
   Array.from(document.querySelectorAll("[data-layered-row]")).forEach((node) => {
     const rowIndex = Number(node.dataset.layeredRow);
     const field = node.dataset.layeredField;
@@ -1053,6 +1088,12 @@ function moveMergedRow(index, delta) {
   const [moved] = nextRows.splice(index, 1);
   nextRows.splice(targetIndex, 0, moved);
   state.latestAnalysis.result.layered_validation_rows = nextRows;
+  renderReadableAnalysis(state.latestAnalysis);
+}
+
+function setLayeredFilter(nextFilter) {
+  if (state.latestAnalysis) syncAnalysisDraftToState();
+  state.layeredFilter = nextFilter || "全部";
   renderReadableAnalysis(state.latestAnalysis);
 }
 
@@ -1404,7 +1445,7 @@ function createReadonlyMergedSection(rows) {
   section.className = "editable-analysis-section";
   const header = document.createElement("div");
   header.className = "section-header";
-  header.innerHTML = "<h4>02-03 分层分析与验证方法</h4>";
+  header.innerHTML = "<h4>分析与验证</h4>";
   section.appendChild(header);
 
   const tableWrap = document.createElement("div");

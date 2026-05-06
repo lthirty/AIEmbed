@@ -160,7 +160,7 @@
             <article class="stack-card">
               <h4>A. 资料导入</h4>
               <label>标题<input id="material-title" type="text" placeholder="例如 客户规格说明 / 问题描述"></label>
-              <label>文件<input id="material-file" type="file"></label>
+              <label>文件<input id="material-file" type="file" multiple></label>
               <button id="upload-material-btn" type="button">上传资料</button>
               <p id="material-result" class="helper">优先导入规格书、数据手册、客户测试报告、图片、原理图片段等。资料越接近现场事实，后面的分析越可靠。</p>
             </article>
@@ -177,7 +177,7 @@
               <h4>B. 问题描述 / 测试报告 / 图片 / 日志</h4>
               <label>标题<input id="info-title" type="text" placeholder="例如 现场观察 / 测试报告 / 异常截图 / 串口日志"></label>
               <label>问题描述<textarea id="info-content" rows="6" placeholder="建议按这四点写：1. 现象是什么；2. 在什么条件下触发；3. 影响范围有多大；4. 复现频率是多少。这里也可以直接粘贴测试报告摘要或串口日志。"></textarea></label>
-              <label>附件<input id="info-file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
+              <label>附件<input id="info-file" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
               <button id="save-info-btn" type="button">导入问题信息</button>
               <p id="info-result" class="helper">这里不是必填项，但至少建议补一段问题描述或一段串口日志。没有现场事实时，AI 只能给出“待验证假设”。</p>
               <div class="serial-capture-card">
