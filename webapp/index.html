@@ -76,6 +76,29 @@
           </div>
         </details>
       </section>
+
+      <section class="sidebar-card">
+        <details id="ai-qa-panel">
+          <summary class="summary-head compact">
+            <span>AI 问答</span>
+            <span class="helper">独立验证当前配置</span>
+          </summary>
+          <div class="details-body">
+            <label>
+              问题
+              <textarea id="ai-qa-question" rows="4" placeholder="例如：请用三句话说明 I2C 上拉电阻过大可能带来的现象。"></textarea>
+            </label>
+            <div class="inline-actions">
+              <button id="ai-qa-ask-btn" type="button">发送问答</button>
+            </div>
+            <p id="ai-qa-status" class="helper">使用当前已选中的 AI 配置，做一次独立问答。</p>
+            <label>
+              回答
+              <textarea id="ai-qa-answer" rows="8" readonly placeholder="这里会显示 AI 回答。"></textarea>
+            </label>
+          </div>
+        </details>
+      </section>
     </aside>
 
     <section class="main-shell">

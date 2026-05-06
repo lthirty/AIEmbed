@@ -16,6 +16,11 @@ const elements = {
   providerSaveResult: document.getElementById("provider-save-result"),
   aiSettingsPanel: document.getElementById("ai-settings-panel"),
   aiValidationBadge: document.getElementById("ai-validation-badge"),
+  aiQaPanel: document.getElementById("ai-qa-panel"),
+  aiQaQuestion: document.getElementById("ai-qa-question"),
+  aiQaAskBtn: document.getElementById("ai-qa-ask-btn"),
+  aiQaStatus: document.getElementById("ai-qa-status"),
+  aiQaAnswer: document.getElementById("ai-qa-answer"),
   activeSessionLabel: document.getElementById("active-session-label"),
   pageTitle: document.getElementById("page-title"),
   pageSubtitle: document.getElementById("page-subtitle"),
@@ -494,6 +499,22 @@ async function saveProviderConfig() {
     await validateSavedProvider();
   } finally {
     elements.saveProviderBtn.disabled = false;
+  }
+}
+
+async function askStandaloneAiQuestion() {
+  const question = elements.aiQaQuestion.value.trim();
+  if (!question) throw new Error("请先输入要提问的内容。");
+  if (!state.apiConfigured) throw new Error("请先选择并验证可用的 AI 配置。");
+  elements.aiQaAskBtn.disabled = true;
+  elements.aiQaStatus.textContent = "正在向当前 AI 配置发送问答请求...";
+  elements.aiQaStatus.classList.remove("error");
+  try {
+    const data = await apiPost("/ai/chat", { question });
+    elements.aiQaAnswer.value = data.answer || "";
+    elements.aiQaStatus.textContent = `问答完成：${data.providerName || "当前 AI"} · ${data.model || "-"}`;
+  } finally {
+    elements.aiQaAskBtn.disabled = false;
   }
 }
 
@@ -2052,6 +2073,7 @@ function bindEvents() {
   elements.providerProfileSelect.addEventListener("change", () => {
     selectProviderProfile(elements.providerProfileSelect.value).catch(showGenericError);
   });
+  elements.aiQaAskBtn.addEventListener("click", () => askStandaloneAiQuestion().catch(showGenericError));
   elements.createSessionBtn.addEventListener("click", () => createSession().catch(showGenericError));
   elements.saveSessionMetaBtn.addEventListener("click", () => saveSessionMeta().catch(showGenericError));
   elements.deleteSessionBtn.addEventListener("click", () => deleteSession().catch(showGenericError));

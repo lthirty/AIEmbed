@@ -23,7 +23,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.22.6"
+APP_VERSION = "v0.22.8"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -39,6 +39,25 @@ DEFAULT_PROVIDER_CONFIG = {
 }
 DEFAULT_PROVIDER_PROFILE_NAME = "默认配置"
 DEFAULT_PROVIDER_PROFILE_ID = "default-profile"
+DEEPSEEK_PROVIDER_PROFILE_ID = "deepseek-reasoner-profile"
+BUILTIN_PROVIDER_PROFILES = [
+    {
+        "id": DEFAULT_PROVIDER_PROFILE_ID,
+        "profileName": DEFAULT_PROVIDER_PROFILE_NAME,
+        "providerName": "MiniMax Token Plan",
+        "apiBaseUrl": "https://api.minimaxi.com/v1/chat/completions",
+        "apiKey": "",
+        "model": "MiniMax-M2.7",
+    },
+    {
+        "id": DEEPSEEK_PROVIDER_PROFILE_ID,
+        "profileName": "DeepSeek 推理",
+        "providerName": "DeepSeek",
+        "apiBaseUrl": "https://api.deepseek.com/chat/completions",
+        "apiKey": "",
+        "model": "deepseek-reasoner",
+    },
+]
 MAX_LOG_ENTRIES = 300
 MAX_PROMPT_EVIDENCE_CHARS = 7000
 AI_PROVIDER_TIMEOUT_SECONDS = 180
@@ -251,9 +270,34 @@ def _normalize_provider_profile(raw_profile: dict, fallback_name: str = DEFAULT_
     }
 
 
+def ensure_builtin_provider_profiles(state: dict) -> dict:
+    profiles = [_normalize_provider_profile(item) for item in state.get("profiles", []) if isinstance(item, dict)]
+    profile_map = {profile["id"]: profile for profile in profiles}
+
+    for builtin in BUILTIN_PROVIDER_PROFILES:
+        builtin_profile = _normalize_provider_profile(builtin, fallback_name=builtin.get("profileName", DEFAULT_PROVIDER_PROFILE_NAME))
+        existing = profile_map.get(builtin_profile["id"])
+        if existing:
+            for key in ("profileName", "providerName", "apiBaseUrl", "model"):
+                if not str(existing.get(key, "")).strip():
+                    existing[key] = builtin_profile[key]
+            if not str(existing.get("apiKey", "")).strip() and str(builtin_profile.get("apiKey", "")).strip():
+                existing["apiKey"] = builtin_profile["apiKey"]
+        else:
+            profiles.append(builtin_profile)
+            profile_map[builtin_profile["id"]] = builtin_profile
+
+    active_profile_id = str(state.get("activeProfileId", "")).strip() or DEFAULT_PROVIDER_PROFILE_ID
+    if not any(item["id"] == active_profile_id for item in profiles):
+        active_profile_id = profiles[0]["id"] if profiles else DEFAULT_PROVIDER_PROFILE_ID
+    return {"activeProfileId": active_profile_id, "profiles": profiles}
+
+
 def load_provider_profiles_state() -> dict:
-    default_profile = _normalize_provider_profile({"id": DEFAULT_PROVIDER_PROFILE_ID, "profileName": DEFAULT_PROVIDER_PROFILE_NAME, **DEFAULT_PROVIDER_CONFIG})
-    state = {"activeProfileId": default_profile["id"], "profiles": [default_profile]}
+    default_profile = _normalize_provider_profile(
+        {"id": DEFAULT_PROVIDER_PROFILE_ID, "profileName": DEFAULT_PROVIDER_PROFILE_NAME, **DEFAULT_PROVIDER_CONFIG}
+    )
+    state = ensure_builtin_provider_profiles({"activeProfileId": default_profile["id"], "profiles": [default_profile]})
     if not CONFIG_PATH.exists():
         return state
     try:
@@ -262,17 +306,16 @@ def load_provider_profiles_state() -> dict:
         return state
 
     if isinstance(parsed, dict) and isinstance(parsed.get("profiles"), list):
-        profiles = [_normalize_provider_profile(item) for item in parsed.get("profiles", []) if isinstance(item, dict)]
-        if not profiles:
-            profiles = [default_profile]
-        active_profile_id = str(parsed.get("activeProfileId", "")).strip() or profiles[0]["id"]
-        if not any(item["id"] == active_profile_id for item in profiles):
-            active_profile_id = profiles[0]["id"]
-        return {"activeProfileId": active_profile_id, "profiles": profiles}
+        return ensure_builtin_provider_profiles(
+            {
+                "activeProfileId": str(parsed.get("activeProfileId", "")).strip(),
+                "profiles": parsed.get("profiles", []),
+            }
+        )
 
     if isinstance(parsed, dict):
         migrated = _normalize_provider_profile({"id": DEFAULT_PROVIDER_PROFILE_ID, **DEFAULT_PROVIDER_CONFIG, **parsed})
-        return {"activeProfileId": migrated["id"], "profiles": [migrated]}
+        return ensure_builtin_provider_profiles({"activeProfileId": migrated["id"], "profiles": [migrated]})
 
     return state
 
@@ -344,11 +387,17 @@ def is_minimax_provider(provider_config: dict) -> bool:
     return "minimax" in provider_name or "api.minimaxi.com" in api_base_url or "api.minimax.io" in api_base_url
 
 
+def is_deepseek_provider(provider_config: dict) -> bool:
+    provider_name = provider_config.get("providerName", "").strip().lower()
+    api_base_url = provider_config.get("apiBaseUrl", "").strip().lower()
+    return "deepseek" in provider_name or "api.deepseek.com" in api_base_url
+
+
 def provider_supports_vision(provider_config: dict) -> tuple[bool, str]:
     provider_name = provider_config.get("providerName", "").strip().lower()
     api_base_url = provider_config.get("apiBaseUrl", "").strip().lower()
 
-    if "deepseek" in provider_name or "api.deepseek.com" in api_base_url:
+    if is_deepseek_provider(provider_config):
         return (
             False,
             "当前配置的 DeepSeek chat/completions 接口按官方文档仅支持文本 content，不支持 image_url 多模态输入，所以不能直接做图像分析。",
@@ -411,6 +460,9 @@ def build_text_payload(prompt: str, provider_config: dict, require_json: bool = 
     if is_minimax_provider(provider_config):
         effective_api_base_url = "https://api.minimaxi.com/v1/chat/completions"
         api_mode = "chat_completions"
+    elif is_deepseek_provider(provider_config):
+        effective_api_base_url = "https://api.deepseek.com/chat/completions"
+        api_mode = "chat_completions"
 
     if api_mode == "anthropic_messages":
         payload = {
@@ -429,8 +481,9 @@ def build_text_payload(prompt: str, provider_config: dict, require_json: bool = 
                 {"role": "user", "content": prompt},
             ],
             "stream": False,
-            "temperature": 0.1,
         }
+        if not is_deepseek_provider(provider_config):
+            payload["temperature"] = 0.1
         if require_json:
             payload["response_format"] = {"type": "json_object"}
     else:
@@ -3301,6 +3354,30 @@ class ViewerHandler(SimpleHTTPRequestHandler):
                 request_id = str(int(time.time() * 1000))
                 analysis = run_session_analysis(session_id, request_text, device_ip, capture_snapshot, request_id)
                 self.send_json(200, {"analysis": analysis, "requestId": request_id})
+            except Exception as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/ai/chat":
+            try:
+                payload = self.parse_json_body()
+                question = str(payload.get("question", "")).strip()
+                if not question:
+                    self.send_json(400, {"error": "question is required"})
+                    return
+                provider_config = load_provider_config()
+                request_id = str(int(time.time() * 1000))
+                answer = call_provider_text(question, provider_config, request_id, require_json=False)
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "answer": answer,
+                        "requestId": request_id,
+                        "providerName": provider_config.get("providerName", ""),
+                        "model": provider_config.get("model", ""),
+                    },
+                )
             except Exception as exc:
                 self.send_json(500, {"error": str(exc)})
             return
