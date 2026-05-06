@@ -167,7 +167,7 @@
 
             <div class="evidence-summary">
               <div class="panel-head compact-head">
-                <span class="helper">已导入资料与附件</span>
+                <span class="helper">A 栏资料</span>
                 <span id="evidence-count" class="helper">0 条</span>
               </div>
               <div id="evidence-inline-list" class="evidence-manage-list"></div>
@@ -180,6 +180,13 @@
               <label>附件<input id="info-file" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.pdf,.doc,.docx,.txt,.md,.log,.json,.csv,.yaml,.yml"></label>
               <button id="save-info-btn" type="button">导入问题信息</button>
               <p id="info-result" class="helper">这里不是必填项，但至少建议补一段问题描述或一段串口日志。没有现场事实时，AI 只能给出“待验证假设”。</p>
+              <div class="evidence-summary">
+                <div class="panel-head compact-head">
+                  <span class="helper">B 栏问题资料 / 图片 / 日志</span>
+                  <span id="info-evidence-count" class="helper">0 条</span>
+                </div>
+                <div id="info-evidence-inline-list" class="evidence-manage-list"></div>
+              </div>
               <div class="serial-capture-card">
                 <div class="panel-head compact-head">
                   <h5>串口 Log 抓取</h5>

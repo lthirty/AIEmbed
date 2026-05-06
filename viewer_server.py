@@ -22,7 +22,7 @@ from serial.tools import list_ports  # type: ignore
 
 HOST = "127.0.0.1"
 PORT = 8000
-APP_VERSION = "v0.22.2"
+APP_VERSION = "v0.22.3"
 ROOT_DIR = Path(__file__).parent
 STATIC_DIR = ROOT_DIR / "webapp"
 CONFIG_PATH = ROOT_DIR / "ai_provider_config.json"
@@ -1473,6 +1473,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
             normalized_rows.append(
                 {
                     "category": str(row.get("category") or "").strip(),
+                    "subtype": str(row.get("subtype") or "").strip(),
                     "owner": str(row.get("owner") or "").strip() or "待定",
                     "reason": str(row.get("reason") or "").strip(),
                     "basis": str(row.get("basis") or "").strip(),
@@ -1494,6 +1495,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
             normalized_rows.append(
                 {
                     "category": category,
+                    "subtype": "",
                     "owner": "待定",
                     "reason": "；".join([item for item in [reason_text, why_text] if item]) or "暂无分析结果",
                     "basis": why_text or "暂无分析结果",
@@ -1523,6 +1525,7 @@ def normalize_layered_validation_rows(result_json: dict) -> dict:
             normalized_rows.append(
                 {
                     "category": category,
+                    "subtype": "",
                     "owner": "待定",
                     "reason": "暂无分析结果",
                     "basis": "暂无分析结果",
@@ -1573,6 +1576,7 @@ def enforce_evidence_basis(result_json: dict, session_payload: dict) -> dict:
                 {
                     "category": row.get("category", "未分类"),
                     "owner": row.get("owner", "待定") or "待定",
+                    "subtype": "",
                     "reason": "暂无分析结果",
                     "basis": "暂无分析结果",
                     "method": "暂无分析结果",
@@ -2270,7 +2274,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
     schema = {
         "phenomenon_summary": "",
         "phenomenon_items": [""],
-        "layered_validation_rows": [{"category": "", "owner": "", "reason": "", "basis": "", "method": "", "result": ""}],
+        "layered_validation_rows": [{"category": "", "subtype": "", "owner": "", "reason": "", "basis": "", "method": "", "result": ""}],
         "layered_analysis": [{"layer": "", "judgement": "", "why": ""}],
         "evidence_used": [{"evidence_title": "", "kind": "", "why_it_matters": ""}],
         "possible_causes": [{"label": "", "confidence": 0.0, "reasoning": "", "required_next_check": ""}],
@@ -2310,7 +2314,7 @@ def build_analysis_prompt(session_payload: dict, request_text: str) -> str:
         "本轮先只完成现象，以及“分层分析+验证方法”的合并条目。"
         "根因、解决方案、经验总结必须先留空，等待人工验证后再填写。"
         "重点输出：现象总结、现象列表、分层分析与验证合并列表、已用证据、可能原因、缺失信息、下一步验证步骤，以及可复用资产建议。"
-        "合并列表中的每一条请显式给出 category、owner、reason、basis、method、result 六个字段。"
+        "“02 分析与验证”列表中的每一条请显式给出 category、subtype、owner、reason、basis、method、result 七个字段。"
         "请优先从多个维度进行可能性分析，至少覆盖：硬件、软件、固件、OS、器件、生产、工艺。"
         "分析思路请参考硬件问题定位方法论：先整理现象与关键属性，再默认按 硬件→接口→驱动→系统→应用 的顺序排查。"
         "请在 validation_steps、guidance_checklist 里写出适合新手照着做的顺序化动作：先看什么，再看什么，需要什么证据，完成标准是什么。"
