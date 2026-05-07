@@ -39,6 +39,7 @@ namespace {
 // v0.22.8 - Project-side workbench seeds a selectable DeepSeek reasoning profile, keeps provider profiles persistent for later login, and adds a sidebar AI Q&A panel for quick provider checks; firmware behavior unchanged
 // v0.22.9 - Project-side workbench removes the standalone 01 现象 section, moves AI Q&A above 02 分析与验证, supports project-based session management, child validation rows, row-height adjustment, and unrestricted column shrinking; firmware behavior unchanged
 // v0.22.10 - Project-side workbench renames sessions to issues, links project and issue lists, simplifies A-section uploads, groups project materials in-place, replaces row-height buttons with drag resize, and keeps child validation rows visually tied to parent issues; firmware behavior unchanged
+// v0.22.11 - Project-side workbench aligns B-section uploads with A-section single-line import flow and makes child-row inherited fields truly blank with gray styling; firmware behavior unchanged
 constexpr char kFirmwareVersion[] = "v0.5.0";
 
 constexpr char kConfigApName[] = "ESP32-CAM-Setup";

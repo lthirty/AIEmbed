@@ -1430,7 +1430,7 @@ function createMergedSection(rows) {
     ["", ...strictCategoryOptions].forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value === "" ? "未分类" : value;
+      option.textContent = value === "" ? "" : value;
       categorySelect.appendChild(option);
     });
     const customOption = document.createElement("option");
@@ -1453,6 +1453,8 @@ function createMergedSection(rows) {
     });
     if (isChildRow) {
       categoryCell.classList.add("child-link-cell");
+      categoryCell.classList.add("child-blank-cell");
+      categorySelect.classList.add("child-blank-control");
       const childHint = document.createElement("span");
       childHint.className = "child-link-badge";
       childHint.textContent = "↳ 子行";
@@ -1477,8 +1479,9 @@ function createMergedSection(rows) {
       control.dataset.layeredField = field;
       control.readOnly = !editable || inheritedChildField;
       if (inheritedChildField) {
-        control.placeholder = "沿用父行";
+        control.placeholder = "";
         td.classList.add("child-inherited-cell");
+        control.classList.add("child-blank-control");
       }
       control.className = field === "owner" ? "merged-analysis-input" : "merged-analysis-textarea";
       control.addEventListener("input", () => syncMergedTableRowHeights(section));

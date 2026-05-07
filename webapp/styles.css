@@ -1056,15 +1056,19 @@ button:disabled {
 }
 
 .merged-analysis-table tbody tr.child-row td {
-  background: rgba(216, 112, 46, 0.04);
+  background: rgba(170, 170, 170, 0.10);
 }
 
 .merged-analysis-table tbody tr.child-row td.child-inherited-cell {
-  background: rgba(216, 112, 46, 0.08);
+  background: rgba(170, 170, 170, 0.16);
 }
 
 .child-link-cell {
   position: relative;
+}
+
+.child-blank-cell {
+  background: rgba(170, 170, 170, 0.16) !important;
 }
 
 .child-link-badge {
@@ -1084,6 +1088,10 @@ button:disabled {
 
 .child-link-cell select {
   padding-top: 28px;
+}
+
+.child-blank-control {
+  background: rgba(170, 170, 170, 0.10) !important;
 }
 
 .custom-category-input.hidden {
